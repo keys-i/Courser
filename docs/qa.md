@@ -4,21 +4,27 @@
 - Dark mode looks fun, not harsh black.
 - Website title says Courser.
 - Theme toggle sun/moon works.
-- Snake animation is a real character, not a wiggly line.
+- Snake looks like a proper snake.
+- No awkward loading bar is the main animation.
 - Accessibility button is reachable by keyboard.
 - GitHub button opens Rad's profile in a new tab.
+- Accessibility options persist.
 - All inputs have visible labels.
-- Stage 1/2/3 inputs are clear.
+- Stage marks use compact 777-style input.
+- Present/Missing statuses only.
 - Result feels clean.
+- Result heading changes to Results Ready / Results Unavailable.
 - Feasibility appears beside each row.
+- Quick Read does not cover content.
 - Quick read panel feels helpful, not noisy.
 - PAF Reality Check is understandable.
 - Marks cannot go below 1 or above 7.
 - Seed cannot be typed.
 - Refresh seed works.
 - Short share link loads the same state.
+- Share link is short and readable.
 - Reduced motion works.
 - Mobile layout is clean.
-- Demo data is loaded only when requested.
-- Radhesh example matches released marks.
-- Peer evaluation is not treated as PAF.
+- Radhesh example is removed.
+- PAF explanation is one combined card.
+- Medals shine once.
