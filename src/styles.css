@@ -222,12 +222,6 @@ progress::-moz-progress-bar {
   color: var(--muted);
 }
 
-.not-cursor {
-  color: var(--accent);
-  font-size: 0.8rem;
-  font-weight: 900;
-}
-
 .courser-logo {
   width: clamp(4.4rem, 12vw, 6.4rem);
   flex: 0 0 auto;
@@ -435,6 +429,22 @@ h2 {
   font-weight: 850;
 }
 
+.toast.good {
+  border-color: color-mix(in srgb, var(--good) 58%, var(--line));
+  background: color-mix(in srgb, var(--good) 13%, var(--card));
+  color: var(--good);
+}
+
+.toast.bad {
+  border-color: color-mix(in srgb, var(--bad) 58%, var(--line));
+  background: color-mix(in srgb, var(--bad) 12%, var(--card));
+  color: var(--bad);
+}
+
+.toast.info {
+  background: color-mix(in srgb, var(--snake) 10%, var(--card));
+}
+
 :root[data-theme="dark"] .toast {
   color: var(--snake);
 }
@@ -466,6 +476,15 @@ thead th {
   text-transform: uppercase;
 }
 
+thead th small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: none;
+}
+
 tbody tr:last-child th,
 tbody tr:last-child td {
   border-bottom: 0;
@@ -489,7 +508,7 @@ tbody tr:last-child td {
 .field > span,
 .range-pair > span,
 .range-pair label span,
-.hex-controls label span {
+.check-controls label span {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 850;
@@ -565,18 +584,24 @@ tbody tr:last-child td {
 }
 
 .rank-gold {
-  box-shadow: inset 5px 0 0 #e4b635;
-  background: color-mix(in srgb, #e4b635 10%, transparent);
+  box-shadow:
+    inset 6px 0 0 #f0ba36,
+    inset 0 0 0 1px color-mix(in srgb, #f0ba36 48%, transparent);
+  background: color-mix(in srgb, #f0ba36 14%, transparent);
 }
 
 .rank-silver {
-  box-shadow: inset 5px 0 0 #aeb9c7;
-  background: color-mix(in srgb, #aeb9c7 12%, transparent);
+  box-shadow:
+    inset 6px 0 0 #b9c4d2,
+    inset 0 0 0 1px color-mix(in srgb, #b9c4d2 48%, transparent);
+  background: color-mix(in srgb, #b9c4d2 16%, transparent);
 }
 
 .rank-bronze {
-  box-shadow: inset 5px 0 0 #c9824b;
-  background: color-mix(in srgb, #c9824b 12%, transparent);
+  box-shadow:
+    inset 6px 0 0 #d88a4d,
+    inset 0 0 0 1px color-mix(in srgb, #d88a4d 48%, transparent);
+  background: color-mix(in srgb, #d88a4d 16%, transparent);
 }
 
 .rank-badge,
@@ -599,15 +624,27 @@ tbody tr:last-child td {
   color: #9a7417;
 }
 
+.rank-badge.gold[data-pulse] {
+  animation: gold-shine 760ms ease;
+}
+
 .rank-badge.silver {
   color: #66717f;
+}
+
+.rank-badge.silver[data-pulse] {
+  animation: silver-glint 680ms ease;
 }
 
 .rank-badge.bronze {
   color: #9a5a25;
 }
 
-.feasibility.looks-normal {
+.rank-badge.bronze[data-pulse] {
+  animation: bronze-ember 760ms ease;
+}
+
+.feasibility.normal {
   color: var(--good);
 }
 
@@ -615,23 +652,24 @@ tbody tr:last-child td {
   color: var(--snake-dark);
 }
 
+.feasibility.high-but-okay,
 .feasibility.very-high,
-.feasibility.suspiciously-low {
+.feasibility.sus {
   color: var(--warn);
 }
 
 .feasibility.impossible,
-.feasibility.needs-course-rule-check {
+.feasibility.course-rule-check {
   color: var(--bad);
 }
 
-.hex-controls {
+.check-controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(12rem, 1fr));
   gap: 0.75rem;
 }
 
-.hex-controls label,
+.check-controls label,
 .seed-card {
   display: grid;
   gap: 0.35rem;
@@ -693,7 +731,8 @@ tbody tr:last-child td {
 }
 
 .metric,
-.summary-card {
+.summary-card,
+.quick-read {
   display: grid;
   gap: 0.35rem;
   padding: 0.8rem;
@@ -724,6 +763,34 @@ tbody tr:last-child td {
   top: 1rem;
   display: grid;
   gap: 0.65rem;
+}
+
+.quick-read {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: var(--ink-shadow);
+}
+
+.quick-read > strong {
+  font-size: 1.05rem;
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.summary-line span,
+.team-read span,
+.released-summary span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .summary-card.accent {
@@ -761,6 +828,36 @@ tbody tr:last-child td {
 
 .team-read ul {
   padding-left: 1.15rem;
+}
+
+.released-summary,
+.released-item,
+.released-wording {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--card-2) 70%, transparent);
+}
+
+.released-summary,
+.released-item {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.released-wording {
+  margin-top: 0.75rem;
+}
+
+.released-wording summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.released-wording p,
+.released-item small {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
 }
 
 .formula-grid {
@@ -816,6 +913,23 @@ tbody tr:last-child td {
   animation: tile-pop 1400ms ease-in-out infinite;
 }
 
+.math-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.math-chips span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  background: color-mix(in srgb, var(--snake) 12%, var(--card));
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
 .tile-track span:nth-child(2) {
   animation-delay: 120ms;
 }
@@ -861,14 +975,29 @@ tbody tr:last-child td {
   fill: var(--text);
 }
 
+.tiny-calc {
+  fill: var(--card-2);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.calc-lines {
+  stroke: var(--text);
+}
+
 .cruncher progress {
   margin-top: 0.45rem;
 }
 
-.access-button {
+.cruncher.still .tile-track span,
+.cruncher.still .accountant-snake {
+  animation: none;
+}
+
+.access-button,
+.github-button {
   position: fixed;
   left: 0.75rem;
-  top: 45%;
   z-index: 20;
   display: grid;
   width: 2.7rem;
@@ -876,9 +1005,35 @@ tbody tr:last-child td {
   place-items: center;
   padding: 0;
   border-radius: 999px;
+  text-decoration: none;
 }
 
-.access-button svg {
+.access-button {
+  top: 45%;
+}
+
+.github-button {
+  top: calc(45% + 3.25rem);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--line) 70%, transparent);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.github-button:hover {
+  transform: translateY(-1px);
+}
+
+.github-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus), 0 0 0 1px var(--snake);
+}
+
+.access-button svg,
+.github-button svg {
   width: 1.35rem;
   height: 1.35rem;
 }
@@ -991,6 +1146,39 @@ tbody tr:last-child td {
   }
 }
 
+@keyframes gold-shine {
+  0% {
+    filter: brightness(1);
+  }
+  45% {
+    filter: brightness(1.35) saturate(1.15);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+@keyframes silver-glint {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-1px);
+    filter: brightness(1.25);
+  }
+}
+
+@keyframes bronze-ember {
+  0%,
+  100% {
+    box-shadow: 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, #d88a4d 24%, transparent);
+  }
+}
+
 @media (max-width: 1080px) {
   .layout {
     grid-template-columns: 1fr;
@@ -1002,7 +1190,7 @@ tbody tr:last-child td {
     order: -1;
   }
 
-  .hex-controls,
+  .check-controls,
   .metrics-grid,
   .formula-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1028,7 +1216,7 @@ tbody tr:last-child td {
   }
 
   .summary,
-  .hex-controls,
+  .check-controls,
   .metrics-grid,
   .formula-grid {
     grid-template-columns: 1fr;
@@ -1045,6 +1233,11 @@ tbody tr:last-child td {
   .access-button {
     top: auto;
     bottom: 1rem;
+  }
+
+  .github-button {
+    top: auto;
+    bottom: 4.25rem;
   }
 
   .access-panel {
