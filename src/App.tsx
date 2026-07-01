@@ -38,7 +38,7 @@ import {
   type SimulationStudent,
   type SimulationSummary
 } from "./simulation";
-import { SEED_EDITABLE, decodeUrlState, encodeUrlState, generateSeed, type UrlMember } from "./urlState";
+import { SEED_EDITABLE, generateSeed, loadShareHash, makeShareLink, storeShareState, type UrlMember, type UrlState } from "./urlState";
 
 type Member = UrlMember & { id: string };
 
@@ -59,8 +59,6 @@ type ResultRow = {
 const STORAGE_KEY = "courser-state-v4";
 const THEME_KEY = "courser-theme";
 const ACCESS_KEY = "courser-accessibility";
-const URL_KEY = "s";
-const LINK_LIMIT = 1800;
 const CHECK_MIN_MS = 700;
 const stageFields = [
   ["STAGE 1", "API Functionality"],
@@ -116,6 +114,14 @@ function storageSet(key: string, value: string) {
   }
 }
 
+function shareStorage(): Storage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function initialTheme(): Theme {
   const saved = storageGet(THEME_KEY);
   if (saved === "light" || saved === "dark") return saved;
@@ -127,10 +133,9 @@ function initialAccess(systemReduced: boolean) {
 }
 
 function initialState() {
-  const encoded = new URLSearchParams(location.search).get(URL_KEY) || "";
-  const decoded = encoded ? decodeUrlState(encoded) : null;
-  if (decoded) return { members: normalizeMembers(decoded.members), seed: decoded.seed, notice: "Share link loaded" };
-  if (encoded) return { members: blankSquad(), seed: generateSeed(), notice: "Link was weird, blank squad loaded" };
+  const storage = shareStorage();
+  const shared = storage ? loadShareHash(storage, location.hash) : {};
+  if (shared.state) return { members: normalizeMembers(shared.state.members), seed: shared.state.seed, notice: shared.message || "Share link loaded" };
 
   const saved = storageGet(STORAGE_KEY);
   if (saved) {
@@ -223,8 +228,8 @@ export default function App() {
   }>({ running: false, progress: 0, message: "" });
   const cancelSimulation = useRef(false);
   const newNameRef = useRef<HTMLInputElement | null>(null);
-  const toastTimer = useRef<number>();
-  const headingTimer = useRef<number>();
+  const toastTimer = useRef<number | undefined>(undefined);
+  const headingTimer = useRef<number | undefined>(undefined);
   const reducedMotion = animationMode(access, systemReduced) === "reduced";
   const mascotPaused = reducedMotion || access.pauseMascot;
 
@@ -259,6 +264,17 @@ export default function App() {
   }, [members, selectedId]);
 
   useEffect(() => {
+    const onHashChange = () => {
+      const storage = shareStorage();
+      if (!storage) return;
+      const shared = loadShareHash(storage, location.hash);
+      if (shared.state) loadSharedState(shared.state, shared.message || "Share link loaded");
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
     if (!simulation.running || reducedMotion || access.calmMode) return;
     const interval = window.setInterval(() => {
       setSimulation((current) => ({
@@ -282,6 +298,15 @@ export default function App() {
     window.clearTimeout(toastTimer.current);
     setToast({ text, tone });
     toastTimer.current = window.setTimeout(() => setToast(null), 1500);
+  }
+
+  function loadSharedState(state: UrlState, message: string) {
+    cancelSimulation.current = true;
+    setMembers(normalizeMembers(state.members));
+    setSeed(state.seed);
+    setNotice(message);
+    setSimulation({ running: false, progress: 0, message: "" });
+    showToast(message, message === "Share link loaded" ? "good" : "info");
   }
 
   function flashResult(valid: boolean) {
@@ -408,15 +433,13 @@ export default function App() {
   }
 
   function copyShareLink() {
-    const encoded = encodeUrlState({ members, seed });
-    const params = new URLSearchParams(location.search);
-    params.set(URL_KEY, encoded);
-    const url = `${location.origin}${location.pathname}?${params.toString()}`;
-    if (url.length > LINK_LIMIT) {
-      copyText(summaryText(exact, seed), "Link got chunky, copied summary");
+    const storage = shareStorage();
+    const saved = storage ? storeShareState(storage, { members, seed }) : null;
+    if (!saved) {
+      copyText(summaryText(exact, seed), "This browser blocked saved links, copied a summary instead");
       return;
     }
-    copyText(url, "Share link copied");
+    copyText(makeShareLink(location.origin, location.pathname, saved.token), "Short link copied");
   }
 
   function checkEveryone() {
@@ -625,10 +648,11 @@ export default function App() {
                   Export CSV
                 </button>
                 <button type="button" className="secondary" onClick={copyShareLink}>
-                  Copy link
+                  Copy short link
                 </button>
               </div>
             </div>
+            <p className="hint share-note">Short links work on this browser. Use export if you need to send it to someone else</p>
             {checking && !simulation.running && <SnakeCruncher reducedMotion={mascotPaused} done={checked} />}
             <ResultTable rows={exact.rows} version={resultVersion} reason={exact.reason} />
             {!!exact.warnings.length && (
@@ -798,7 +822,7 @@ function InputRow({
 }: {
   member: Member;
   index: number;
-  refTarget?: RefObject<HTMLInputElement>;
+  refTarget?: RefObject<HTMLInputElement | null>;
   touched: Set<string>;
   onBlur: () => void;
   markTouched: (key: string) => void;

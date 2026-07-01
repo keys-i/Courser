@@ -16,7 +16,19 @@ export type UrlState = {
   seed: string;
 };
 
+type ShareIndexEntry = {
+  token: string;
+  createdAt: number;
+  teamSize?: number;
+};
+
+type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
 export const SEED_EDITABLE = false;
+export const SHARE_INDEX_KEY = "courser:share:index";
+export const SHARE_KEY_PREFIX = "courser:share:";
+export const SHARE_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+export const SHARE_TOKEN_RE = /^[2-9A-HJ-NP-Za-km-z]{6,8}$/;
 
 export function generateSeed(random = Math.random): string {
   return `SNAKE-${Math.floor(random() * 90000 + 10000)}`;
@@ -24,39 +36,6 @@ export function generateSeed(random = Math.random): string {
 
 export function refreshSeedState<T extends { seed: string; stale?: boolean }>(state: T, random = Math.random): T {
   return { ...state, seed: generateSeed(random), stale: true };
-}
-
-export function encodeUrlState(state: UrlState): string {
-  const rows = trimBlankTail(state.members)
-    .map((member) => {
-      const fields = [
-        safe(member.name),
-        member.stageMarks,
-        member.presentation,
-        member.overall,
-        member.status === "missing" ? "m" : "p"
-      ];
-      if (member.status === "missing") fields.push(packRanges(member.ranges));
-      return fields.join(":");
-    })
-    .join(";");
-  return ["1", state.seed.replace("SNAKE-", "S"), rows].join(".");
-}
-
-export function decodeUrlState(value: string): UrlState | null {
-  try {
-    const firstDot = value.indexOf(".");
-    const secondDot = value.indexOf(".", firstDot + 1);
-    if (firstDot < 0 || secondDot < 0) return null;
-    const version = value.slice(0, firstDot);
-    const seedPart = value.slice(firstDot + 1, secondDot);
-    const rowsPart = value.slice(secondDot + 1);
-    if (version !== "1" || !/^S\d{5}$/.test(seedPart)) return null;
-    const rows = rowsPart ? rowsPart.split(";").map(unpackRow) : blankUrlMembers();
-    return { seed: `SNAKE-${seedPart.slice(1)}`, members: rows.length ? rows : blankUrlMembers() };
-  } catch {
-    return null;
-  }
 }
 
 export function blankUrlMembers(count = 3): UrlMember[] {
@@ -70,57 +49,132 @@ export function blankUrlMembers(count = 3): UrlMember[] {
   }));
 }
 
-export function decodeUrlStateOrBlank(value: string, seed = generateSeed()): UrlState {
-  return decodeUrlState(value) ?? { members: blankUrlMembers(), seed };
+export function validShareToken(token: string): boolean {
+  return SHARE_TOKEN_RE.test(token);
 }
 
-function unpackRow(value: string): UrlMember {
-  const [name = "", stageMarks = "", presentation = "", overall = "", statusRaw = "p", rangesRaw = ""] = value.split(":");
-  const status: StudentStatus = statusRaw === "m" ? "missing" : "present";
-  return {
-    name: unsafe(name),
-    stageMarks,
-    presentation,
-    overall,
-    status,
-    ranges: status === "missing" ? unpackRanges(rangesRaw) : defaultRanges()
-  };
+export function hashToken(hash: string): { token?: string; error?: "invalid" | "missing" } {
+  const token = hash.replace(/^#/, "");
+  if (!token) return {};
+  return validShareToken(token) ? { token } : { error: "invalid" };
 }
 
-function trimBlankTail(members: UrlMember[]) {
-  const rows = [...members];
-  while (rows.length > 3 && isBlank(rows[rows.length - 1])) rows.pop();
-  return rows;
+export function makeShareLink(origin: string, pathname: string, token: string): string {
+  return `${origin}${pathname}#${token}`;
 }
 
-function isBlank(member: UrlMember) {
-  return !member.name.trim() && !member.stageMarks.trim() && !member.presentation.trim() && !member.overall.trim() && member.status === "present";
+export function storeShareState(
+  storage: StorageLike,
+  state: UrlState,
+  random = Math.random,
+  now = Date.now
+): { token: string } | null {
+  try {
+    const token = generateShareToken(storage, random);
+    storage.setItem(`${SHARE_KEY_PREFIX}${token}`, JSON.stringify(state));
+    updateIndex(storage, { token, createdAt: now(), teamSize: state.members.length });
+    return { token };
+  } catch {
+    return null;
+  }
 }
 
-function packRanges(ranges: MissingRanges): string {
-  return (["stage1", "stage2", "stage3", "presentation", "overall"] as const)
-    .map((key) => `${ranges[key].min}-${ranges[key].max}`)
-    .join(",");
+export function loadShareToken(storage: StorageLike, token: string): UrlState | null {
+  if (!validShareToken(token)) return null;
+  try {
+    const raw = storage.getItem(`${SHARE_KEY_PREFIX}${token}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!isUrlState(parsed)) {
+      storage.removeItem(`${SHARE_KEY_PREFIX}${token}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    try {
+      storage.removeItem(`${SHARE_KEY_PREFIX}${token}`);
+    } catch {
+      return null;
+    }
+    return null;
+  }
 }
 
-function unpackRanges(value: string): MissingRanges {
-  const fallback = defaultRanges();
-  const keys = ["stage1", "stage2", "stage3", "presentation", "overall"] as const;
-  const parts = value.split(",");
-  return keys.reduce((ranges, key, index) => {
-    const [min, max] = (parts[index] || "").split("-").map(Number);
-    ranges[key] = {
-      min: Number.isFinite(min) ? min : fallback[key].min,
-      max: Number.isFinite(max) ? max : fallback[key].max
-    };
-    return ranges;
-  }, fallback);
+export function loadShareHash(storage: StorageLike, hash: string): { state?: UrlState; message?: string } {
+  const parsed = hashToken(hash);
+  if (parsed.error === "invalid") return { state: { members: blankUrlMembers(), seed: generateSeed() }, message: "That link looks weird" };
+  if (!parsed.token) return {};
+  const state = loadShareToken(storage, parsed.token);
+  return state
+    ? { state }
+    : { state: { members: blankUrlMembers(), seed: generateSeed() }, message: "Link token not found on this browser" };
 }
 
-function safe(value: string) {
-  return encodeURIComponent(value.trim()).replace(/%20/g, "+");
+export function generateShareToken(storage: StorageLike, random = Math.random): string {
+  for (let i = 0; i < 10; i++) {
+    const token = randomToken(6, random);
+    if (!storage.getItem(`${SHARE_KEY_PREFIX}${token}`)) return token;
+  }
+  for (let i = 0; i < 10; i++) {
+    const token = randomToken(8, random);
+    if (!storage.getItem(`${SHARE_KEY_PREFIX}${token}`)) return token;
+  }
+  return randomToken(8, random);
 }
 
-function unsafe(value: string) {
-  return decodeURIComponent(value.replace(/\+/g, "%20"));
+function randomToken(length: number, random: () => number) {
+  return Array.from({ length }, () => SHARE_TOKEN_ALPHABET[Math.floor(random() * SHARE_TOKEN_ALPHABET.length)]).join("");
+}
+
+function updateIndex(storage: StorageLike, entry: ShareIndexEntry) {
+  const index = parseIndex(storage.getItem(SHARE_INDEX_KEY))
+    .filter((item) => item.token !== entry.token)
+    .concat(entry)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  index.slice(25).forEach((item) => storage.removeItem(`${SHARE_KEY_PREFIX}${item.token}`));
+  storage.setItem(SHARE_INDEX_KEY, JSON.stringify(index.slice(0, 25)));
+}
+
+function parseIndex(value: string | null): ShareIndexEntry[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.token === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function isUrlState(value: unknown): value is UrlState {
+  const state = value as UrlState;
+  return (
+    !!state &&
+    /^SNAKE-\d{5}$/.test(state.seed) &&
+    Array.isArray(state.members) &&
+    state.members.every(isUrlMember)
+  );
+}
+
+function isUrlMember(value: unknown): value is UrlMember {
+  const member = value as UrlMember;
+  return (
+    !!member &&
+    typeof member.name === "string" &&
+    typeof member.stageMarks === "string" &&
+    typeof member.presentation === "string" &&
+    typeof member.overall === "string" &&
+    (member.status === "present" || member.status === "missing") &&
+    isRanges(member.ranges)
+  );
+}
+
+function isRanges(value: unknown): value is MissingRanges {
+  const ranges = value as MissingRanges;
+  return (
+    !!ranges &&
+    ["stage1", "stage2", "stage3", "presentation", "overall"].every((key) => {
+      const range = ranges[key as keyof MissingRanges];
+      return range && Number.isFinite(range.min) && Number.isFinite(range.max);
+    })
+  );
 }

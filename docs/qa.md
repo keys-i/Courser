@@ -21,8 +21,13 @@
 - Marks cannot go below 1 or above 7.
 - Seed cannot be typed.
 - Refresh seed works.
-- Short share link loads the same state.
-- Share link is short and readable.
+- Copy short link creates a `#token` URL.
+- Link is tiny and readable.
+- Same browser can restore from `#token`.
+- Different browser shows token-not-found.
+- Bad hash does not crash app.
+- Old share states are cleaned up.
+- No `?s=` link appears from the main share button.
 - Reduced motion works.
 - Mobile layout is clean.
 - Radhesh example is removed.

@@ -56,6 +56,9 @@ describe("ui smoke", () => {
     expect(source).toContain("Pause mascot");
     expect(source).toContain("Seed: {seed}");
     expect(source).toContain("Refresh seed");
+    expect(source).toContain("Copy short link");
+    expect(source).toContain("Short links work on this browser");
+    expect(source).not.toContain("?s=");
     expect(source).not.toContain("<input value={seed}");
   });
 
