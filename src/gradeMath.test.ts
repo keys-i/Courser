@@ -58,33 +58,43 @@ describe("grade math", () => {
     expect(individualProjectFromWeightedResult(6.7, c, 6)).toBeCloseTo(7);
   });
 
+  test.each([
+    [1, 100],
+    [1.2, 120],
+    [0.8, 80]
+  ])("treats PAF %s as %s percent", (paf, percent) => {
+    expect(paf * 100).toBeCloseTo(percent);
+    expect(individualProjectFromPaf(7, paf)).toBeCloseTo((7 * percent) / 100);
+  });
+
   it("matches the Radhesh released example without using peer evaluation as PAF", () => {
     const example = RADHESH_RELEASED_EXAMPLE;
     const c = stageAverage(example.stage1, example.stage2, example.stage3);
     expect(c).toBe(7);
     expect(pafForStudent(example.individualProject, example.teamCapstone)).toBe(1);
+    expect(example.individualProject).toBe(individualProjectFromPaf(example.teamCapstone, 1));
     expect(weightedCourseResult(c, example.presentation, example.individualProject)).toBeCloseTo(6.7);
-    expect(example.peerEvaluation).toBe("1/10");
+    expect(example.peerEvaluation).toBe("1");
     expect(1 / 10).not.toBe(pafForStudent(example.individualProject, example.teamCapstone));
   });
 
   test.each([
-    [-0.1, "Impossible"],
+    [-0.1, "Sus"],
     [0, "Sus"],
     [0.49, "Sus"],
     [0.5, "Normal"],
     [1.14, "Normal"],
     [1.15, "Boosted"],
     [1.4, "Boosted"],
-    [1.41, "Very high"],
-    [2, "Very high"],
+    [1.41, "High"],
+    [2, "High"],
     [2.01, "Sus"]
   ] as const)("classifies PAF %s as %s", (paf, expected) => {
     expect(classifyPafFeasibility(paf, [paf, 1, 1], 3, 5, 5)).toBe(expected);
   });
 
   it("flags team-level oddities", () => {
-    expect(teamFeasibilityNotes([0.4, 0.4, 0.4, 2.2, 1], [2, 2, 2, 7, 5], 5)).toContain("This looks lopsided");
+    expect(teamFeasibilityNotes([0.4, 0.4, 0.4, 2.2, 1], [2, 2, 2, 7, 5], 5)).toContain("A bit lopsided");
     expect(teamFeasibilityNotes([0, 0.2, 0.3, 0.4, 0.49, 4.61], [1, 1, 1, 1, 1, 7], 7)).toContain(
       "This smells like a group-chat incident"
     );

@@ -8,6 +8,9 @@ export const GITHUB_PROFILE_URL = "https://github.com/keys-i";
 export const RELEASED_GRADE_NOTE =
   "Your individual project grade is based on the team's project grade and your peer assessment factor. The peer assessment factor is based on the feedback provided by other team members, and yourself; plus observations made by staff in your practical class and data from GitHub.";
 
+export const PAF_FACTOR_NOTE =
+  "Gradebook may show it strangely, but PAF is a factor. 1.00 means 100%, so your individual project grade equals the team capstone grade.";
+
 export const TRUSTED_FORMULAS = [
   { label: "Stage average", tex: "C = \\frac{S_1 + S_2 + S_3}{3}" },
   { label: "Individual project", tex: "I = T \\times p" },
@@ -26,6 +29,6 @@ export const RADHESH_RELEASED_EXAMPLE = {
   presentation: 6,
   teamCapstone: 7,
   individualProject: 7,
-  peerEvaluation: "1/10",
+  peerEvaluation: "1",
   weightedBeforeRounding: 6.7
 } as const;

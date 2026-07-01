@@ -163,24 +163,6 @@ input.invalid {
   background: color-mix(in srgb, var(--bad) 8%, var(--card));
 }
 
-progress {
-  width: 100%;
-  height: 0.8rem;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--card-2);
-}
-
-progress::-webkit-progress-bar {
-  background: var(--card-2);
-}
-
-progress::-webkit-progress-value,
-progress::-moz-progress-bar {
-  background: linear-gradient(90deg, var(--snake), var(--accent-2), var(--accent));
-}
-
 .app {
   width: min(1480px, 100%);
   margin: 0 auto;
@@ -652,13 +634,11 @@ tbody tr:last-child td {
   color: var(--snake-dark);
 }
 
-.feasibility.high-but-okay,
-.feasibility.very-high,
+.feasibility.high,
 .feasibility.sus {
   color: var(--warn);
 }
 
-.feasibility.impossible,
 .feasibility.course-rule-check {
   color: var(--bad);
 }
@@ -832,7 +812,8 @@ tbody tr:last-child td {
 
 .released-summary,
 .released-item,
-.released-wording {
+.released-wording,
+.info-card {
   border: 1px dashed var(--line);
   border-radius: var(--radius);
   padding: 0.75rem;
@@ -840,7 +821,8 @@ tbody tr:last-child td {
 }
 
 .released-summary,
-.released-item {
+.released-item,
+.info-card {
   display: grid;
   gap: 0.25rem;
 }
@@ -855,7 +837,8 @@ tbody tr:last-child td {
 }
 
 .released-wording p,
-.released-item small {
+.released-item small,
+.info-card p {
   margin: 0.4rem 0 0;
   color: var(--muted);
 }
@@ -891,26 +874,13 @@ tbody tr:last-child td {
   margin: 0.8rem 0 1rem;
   border: 1px solid var(--line);
   border-radius: 16px;
+  min-height: 7.4rem;
   padding: 0.9rem;
-  background: linear-gradient(180deg, var(--card-2), var(--card));
+  background:
+    linear-gradient(90deg, transparent 0 31px, var(--bg-mark) 32px),
+    linear-gradient(180deg, var(--card-2), var(--card));
+  background-size: 32px 100%, auto;
   overflow: hidden;
-}
-
-.tile-track {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0.35rem;
-}
-
-.tile-track span {
-  display: grid;
-  min-height: 2.1rem;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  font-weight: 950;
-  animation: tile-pop 1400ms ease-in-out infinite;
 }
 
 .math-chips {
@@ -930,40 +900,42 @@ tbody tr:last-child td {
   font-size: 0.75rem;
 }
 
-.tile-track span:nth-child(2) {
-  animation-delay: 120ms;
+.paf-chip,
+.ready-chip {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.18rem 0.52rem;
+  background: var(--card);
+  font-weight: 950;
 }
 
-.tile-track span:nth-child(3) {
-  animation-delay: 240ms;
+.paf-chip {
+  left: 54%;
+  top: 3.1rem;
+  color: var(--accent);
 }
 
-.tile-track span:nth-child(4) {
-  animation-delay: 360ms;
-}
-
-.tile-track span:nth-child(5) {
-  animation-delay: 480ms;
-}
-
-.tile-track span:nth-child(6) {
-  animation-delay: 600ms;
-}
-
-.tile-track span:nth-child(7) {
-  animation-delay: 720ms;
+.ready-chip {
+  right: 0.8rem;
+  bottom: 0.7rem;
+  color: var(--good);
+  animation: chip-drop 480ms ease;
 }
 
 .accountant-snake {
-  width: 16rem;
-  max-width: 80%;
-  margin-top: 0.4rem;
-  animation: snake-cross 2200ms ease-in-out infinite;
+  width: 18rem;
+  max-width: 86%;
+  margin-top: 0.55rem;
+  animation: snake-slither 1800ms cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
 .accountant-body,
 .accountant-tail,
-.accountant-tap {
+.accountant-coil,
+.accountant-tongue {
   stroke: var(--snake);
 }
 
@@ -973,24 +945,13 @@ tbody tr:last-child td {
 
 .accountant-eye {
   fill: var(--text);
+  transform-origin: 250px 44px;
+  animation: blink 4s infinite;
 }
 
-.tiny-calc {
-  fill: var(--card-2);
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-
-.calc-lines {
-  stroke: var(--text);
-}
-
-.cruncher progress {
-  margin-top: 0.45rem;
-}
-
-.cruncher.still .tile-track span,
-.cruncher.still .accountant-snake {
+.cruncher.still .accountant-snake,
+.cruncher.still .accountant-eye,
+.cruncher.still .ready-chip {
   animation: none;
 }
 
@@ -1125,24 +1086,29 @@ tbody tr:last-child td {
   }
 }
 
-@keyframes snake-cross {
-  0%,
-  100% {
-    transform: translateX(0);
+@keyframes snake-slither {
+  0% {
+    transform: translateX(-1.2rem) translateY(0) rotate(-1deg);
   }
-  50% {
-    transform: translateX(calc(100% - 16rem));
+  45% {
+    transform: translateX(42%) translateY(-0.25rem) rotate(1deg);
+  }
+  70% {
+    transform: translateX(48%) translateY(0.15rem) rotate(-2deg);
+  }
+  100% {
+    transform: translateX(0.2rem) translateY(0) rotate(0);
   }
 }
 
-@keyframes tile-pop {
-  0%,
-  100% {
-    transform: translateY(0);
+@keyframes chip-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.45rem);
   }
-  50% {
-    transform: translateY(-3px);
-    background: color-mix(in srgb, var(--snake) 18%, var(--card));
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

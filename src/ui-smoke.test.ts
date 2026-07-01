@@ -17,14 +17,21 @@ describe("ui smoke", () => {
   it("uses the released-grade UI wording", () => {
     const source = app();
     expect(source).toContain("<h2>Result</h2>");
-    expect(source).toContain("Individual project grade after PAF");
+    expect(source).toContain("Individual project grade");
+    expect(source).toContain("PAF 1.00 means 100% contribution");
+    expect(source).toContain("PAF is not out of 10");
     expect(source).toContain("PAF Reality Check");
     expect(source).toContain("Load Radhesh example");
-    expect(source).toContain("Feedback item only, not the PAF");
+    expect(source).toContain("Results ready");
+    expect(source).toContain("Fix marks first");
+    expect(source).toContain("Gradebook display only, not a PAF grade");
     expect(source).not.toContain("Result Table");
     expect(source).not.toContain("Sorted by PAF");
     expect(source).not.toContain("wildlife documentaries");
     expect(source).not.toContain("Final project grade after PAF");
+    expect(source).not.toContain("Individual project grade after PAF");
+    expect(source).not.toContain("Hex Check");
+    expect(source).not.toContain("Monte Carlo Labs");
   });
 
   it("shows stages, not old cloud wording", () => {
@@ -43,6 +50,14 @@ describe("ui smoke", () => {
     expect(source).toContain("Seed: {seed}");
     expect(source).toContain("Refresh seed");
     expect(source).not.toContain("<input value={seed}");
+  });
+
+  it("keeps the snake animation as the visible loading treatment", () => {
+    const source = app();
+    expect(source).toContain("accountant-snake");
+    expect(source).toContain("paf-chip");
+    expect(source).toContain("ready-chip");
+    expect(source).not.toContain("<progress");
   });
 
   it("keeps docs and formula rendering trusted", () => {

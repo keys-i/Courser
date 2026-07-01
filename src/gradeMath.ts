@@ -35,7 +35,7 @@ export type RankedPaf = {
   tied: boolean;
 };
 
-export type FeasibilityLabel = "Impossible" | "Normal" | "Boosted" | "High but okay" | "Very high" | "Sus" | "Course-rule check";
+export type FeasibilityLabel = "Normal" | "Boosted" | "High" | "Sus" | "Course-rule check";
 
 const TIE_EPSILON = 0.0001;
 
@@ -214,14 +214,14 @@ export function classifyPafFeasibility(
   individualProject: number,
   teamCapstone = 1
 ): FeasibilityLabel {
-  if (memberPaf < 0 || teamCapstone <= 0 || individualProject < MIN_MARK) return "Impossible";
+  if (teamCapstone <= 0 || individualProject < MIN_MARK) return "Course-rule check";
   if (individualProject > MAX_MARK) return "Course-rule check";
   if (memberPaf > 2) return "Sus";
   if (memberPaf < 0.5) return "Sus";
   if (teamSize === 6 && allPafs.filter((paf) => paf < 0.5).length >= 5) return "Sus";
   if (memberPaf < 1.15) return "Normal";
   if (memberPaf <= 1.4) return "Boosted";
-  return "Very high";
+  return "High";
 }
 
 export function teamFeasibilityNotes(
@@ -232,7 +232,7 @@ export function teamFeasibilityNotes(
   const notes: string[] = [];
   const lowCount = pafs.filter((paf) => paf < 0.5).length;
   if (teamCapstone <= 0 || !Number.isFinite(teamCapstone)) notes.push("Need a valid team capstone grade");
-  if (pafs.some((paf) => paf > 2) && lowCount >= Math.max(1, pafs.length - 2)) notes.push("This looks lopsided");
+  if (pafs.some((paf) => paf > 2) && lowCount >= Math.max(1, pafs.length - 2)) notes.push("A bit lopsided");
   if (pafs.length === 6 && lowCount >= 5) notes.push("This smells like a group-chat incident");
   if (individualProjects.some((project) => project > MAX_MARK)) notes.push("Above 7 needs course rules");
   return notes;

@@ -14,6 +14,8 @@ The released feedback says:
 
 Courser treats the peer evaluation score as released feedback only. It is not the PAF. PAF is the factor that adjusts the team capstone project grade into the individual project grade.
 
+Gradebook may show PAF strangely as out of 10, but it is a factor. `1.00` means `100%`, `1.20` means `120%`, and `0.80` means `80%`.
+
 ## Released Grade Example
 
 Radhesh Goel's released marks:
@@ -25,14 +27,16 @@ Radhesh Goel's released marks:
 | Stage 3 - Scalable Application | 01/05/2026 | 7/7 |
 | Architecture Presentation | 29/05/2026 | 6/7 |
 | Team Capstone Project | 08/06/2026 | 7/7 |
-| Capstone Project Peer Evaluation | released feedback | 1/10 |
+| Capstone Project Peer Evaluation display | released feedback | 1 |
 | Individual Project Grade | 08/06/2026 | 7/7 |
 
 For this example:
 
 - Stage average: `7.00`
+- Team capstone grade: `7.00`
+- Individual project grade: `7.00`
 - Estimated PAF: `7 / 7 = 1.00`
-- Weighted result: `6.70 before any course rounding`
+- Weighted result: `6.70 before course rounding`
 
 Courser does not claim official course rounding rules.
 
@@ -40,37 +44,19 @@ Courser does not claim official course rounding rules.
 
 ```math
 C = \frac{S_1 + S_2 + S_3}{3}
-```
 
-```math
 I = T \times p
-```
 
-```math
 p = \frac{I}{T}
-```
 
-```math
 G = 0.40C + 0.30R + 0.30I
-```
 
-If you know a target weighted result and need the individual project grade:
-
-```math
 I = \frac{G - 0.40C - 0.30R}{0.30}
-```
 
-For team inference:
-
-```math
 T = \frac{1}{N}\sum_{i=1}^{N}I_i
-```
 
-```math
 p_i = \frac{I_i}{T}
-```
 
-```math
 \sum_{i=1}^{N}p_i = N
 ```
 
@@ -79,7 +65,7 @@ Where:
 - `S1`, `S2`, `S3` are the three stage marks
 - `C` is the stage average
 - `R` is the Architecture Presentation mark
-- `T` is the team capstone project grade before PAF
+- `T` is the team capstone project grade
 - `p` is the peer assessment factor
 - `I` is the individual project grade after PAF
 - `G` is the weighted course result before rounding

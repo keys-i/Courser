@@ -10,7 +10,7 @@ import {
   type AccessibilitySettings,
   type Theme
 } from "./accessibility";
-import { GITHUB_PROFILE_URL, MAX_MARK, MIN_MARK, MIN_TEAM_SIZE, RADHESH_RELEASED_EXAMPLE, RELEASED_GRADE_NOTE, TRUSTED_FORMULAS } from "./constants";
+import { GITHUB_PROFILE_URL, MAX_MARK, MIN_MARK, MIN_TEAM_SIZE, PAF_FACTOR_NOTE, RADHESH_RELEASED_EXAMPLE, RELEASED_GRADE_NOTE, TRUSTED_FORMULAS } from "./constants";
 import {
   classifyPafFeasibility,
   csvEscape,
@@ -404,14 +404,15 @@ export default function App() {
   function exportCsv() {
     if (!exact.available) return;
     const rows = [
-      ["Student", "Stage average", "Presentation", "Team capstone grade", "Individual project grade after PAF", "PAF", "Feasibility"],
+      ["Student", "Stage avg", "Presentation", "Team capstone grade", "PAF", "Individual project grade", "Weighted result", "Feasibility"],
       ...exact.rows.map((row) => [
         row.name,
         formatGrade(row.stageAvg),
         formatGrade(row.presentation),
         formatGrade(row.teamCapstone),
+        formatPaf(row.paf),
         formatGrade(row.individualProject),
-        row.paf.toFixed(3),
+        formatGrade(row.weighted),
         row.feasibility
       ])
     ];
@@ -578,7 +579,7 @@ export default function App() {
               </div>
             </div>
             {exact.duplicateWarning && <p className="soft-warning">{exact.duplicateWarning}</p>}
-            <p className="hint help-line">Team project grade × PAF = your individual project grade</p>
+            <p className="hint help-line">PAF 1.00 means 100% contribution</p>
             <div className="table-shell input-table-shell">
               <table className="input-table">
                 <thead>
@@ -641,7 +642,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {checking && <SnakeCruncher reducedMotion={reducedMotion} progress={simulation.progress} />}
+            {checking && !simulation.running && <SnakeCruncher reducedMotion={reducedMotion} done={checked} />}
             <ResultTable rows={exact.rows} version={resultVersion} reason={exact.reason} />
             {!!exact.warnings.length && (
               <ul className="warning-list">
@@ -657,7 +658,7 @@ export default function App() {
               <div>
                 <p className="eyebrow">PAF Reality Check</p>
                 <h2>For missing marks and ghost teammates</h2>
-                <p className="hint">Use this when someone’s marks are missing. It samples likely scores and shows whether the PAF story still makes sense</p>
+                <p className="hint">Use this when someone’s marks are missing. It samples likely scores and checks whether the PAF story still makes sense</p>
               </div>
               <div className="button-row">
                 <button type="button" onClick={runRealityCheck} disabled={!canRunCheck}>
@@ -668,6 +669,7 @@ export default function App() {
                 </button>
               </div>
             </div>
+            {simulation.running && <SnakeCruncher reducedMotion={reducedMotion} done={false} />}
             <div className="check-controls">
               <label>
                 <span>Iterations</span>
@@ -721,7 +723,6 @@ export default function App() {
                   {reducedMotion ? "Run check" : simulation.message}
                   <strong> {Math.round(simulation.progress * 100)}%</strong>
                 </p>
-                <progress value={simulation.progress} max={1} />
               </div>
             )}
             {simulation.error && <p className="status-bad">{simulation.error}</p>}
@@ -758,15 +759,19 @@ export default function App() {
               </div>
             </div>
             <p>{shortReleasedNote()}</p>
+            <article className="info-card">
+              <strong>PAF is not out of 10</strong>
+              <p>{PAF_FACTOR_NOTE}</p>
+            </article>
             <details className="released-wording">
               <summary>Released wording</summary>
               <p>{RELEASED_GRADE_NOTE}</p>
             </details>
             {exact.rows.some((row) => row.peerEvaluation) && (
               <div className="released-item">
-                <strong>Peer evaluation</strong>
+                <strong>Peer evaluation display</strong>
                 <span>{exact.rows.find((row) => row.peerEvaluation)?.peerEvaluation}</span>
-                <small>Feedback item only, not the PAF</small>
+                <small>Gradebook display only, not a PAF grade</small>
               </div>
             )}
           </section>
@@ -792,7 +797,7 @@ export default function App() {
                   ))}
                 </ul>
               ) : (
-                <p>{exact.available ? "The snake did the maths" : "Need 3 people"}</p>
+                <p>{exact.available ? "Looks balanced" : "Need 3 people"}</p>
               )}
             </div>
             {exact.releasedSummary && (
@@ -1032,15 +1037,14 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
         <thead>
           <tr>
             <th>Student</th>
-            <th>Stage average</th>
+            <th>Stage avg</th>
             <th>Presentation</th>
             <th>Team capstone grade</th>
-            <th>
-              <span title="This is the project mark you personally receive after the team capstone grade is adjusted by your PAF">
-                Individual project grade after PAF
-              </span>
-            </th>
             <th aria-sort="descending">PAF ↓</th>
+            <th>
+              <span title="Team capstone grade × PAF">Individual project grade</span>
+            </th>
+            <th>Weighted result</th>
             <th>Feasibility</th>
           </tr>
         </thead>
@@ -1059,8 +1063,9 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
                 <td title={String(row.stageAvg)}>{formatGrade(row.stageAvg)}</td>
                 <td>{formatGrade(row.presentation)}</td>
                 <td>{formatGrade(row.teamCapstone)}</td>
+                <td title={String(row.paf)}>{formatPaf(row.paf)}</td>
                 <td title={String(row.individualProject)}>{formatGrade(row.individualProject)}</td>
-                <td title={String(row.paf)}>{row.paf.toFixed(3)}</td>
+                <td title={String(row.weighted)}>{formatGrade(row.weighted)}</td>
                 <td>
                   <span className={`feasibility ${slug(row.feasibility)}`}>{row.feasibility}</span>
                 </td>
@@ -1068,7 +1073,7 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
             ))
           ) : (
             <tr>
-              <td colSpan={7}>{reason || "Need 3 people"}</td>
+              <td colSpan={8}>{reason || "Need 3 people"}</td>
             </tr>
           )}
         </tbody>
@@ -1081,7 +1086,7 @@ function CheckResults({ summary, stale = false }: { summary: SimulationSummary; 
   return (
     <div className={stale ? "sim-results stale" : "sim-results"}>
       <p className="verdict">{stale ? `Previous: ${summary.verdict}` : summary.verdict}</p>
-      <p className="hint">Estimate, not proof</p>
+      <p className="hint">The snake did the maths · estimate, not proof</p>
       <div className="metrics-grid">
         <Metric label="Valid runs" value={String(summary.valid)} />
         <Metric label="Skipped" value={String(summary.invalid)} />
@@ -1146,30 +1151,25 @@ function CourserLogo({ className }: { className: string }) {
   );
 }
 
-function SnakeCruncher({ reducedMotion, progress }: { reducedMotion: boolean; progress: number }) {
+function SnakeCruncher({ reducedMotion, done }: { reducedMotion: boolean; done: boolean }) {
   return (
     <div className={reducedMotion ? "cruncher still" : "cruncher"} aria-hidden={reducedMotion ? "true" : "false"}>
-      <div className="tile-track">
-        {[1, 2, 3, 4, 5, 6, 7].map((value) => (
-          <span key={value}>{value}</span>
-        ))}
-      </div>
       <div className="math-chips">
-        <span>p_i</span>
         <span>T</span>
-        <span>7/7</span>
-        <span>PAF</span>
+        <span>p</span>
+        <span>I</span>
+        <span>100%</span>
       </div>
+      <span className="paf-chip">PAF</span>
       <svg viewBox="0 0 280 76" className="accountant-snake" role="img" aria-label="Snake checking score tiles">
-        <path className="accountant-tail" d="M20 49c12 16 27-9 12-15" fill="none" strokeWidth="6" strokeLinecap="round" />
-        <path className="accountant-body" d="M36 45c19-17 40-17 59 0s40 17 60 0 42-17 65 1" fill="none" strokeWidth="11" strokeLinecap="round" />
-        <circle className="accountant-head" cx="226" cy="46" r="13" />
-        <circle className="accountant-eye" cx="230" cy="41" r="2" />
-        <path className="accountant-tap" d="M214 57l-10 8" strokeWidth="4" strokeLinecap="round" />
-        <rect className="tiny-calc" x="238" y="45" width="24" height="20" rx="3" />
-        <path className="calc-lines" d="M243 51h14M243 57h3m5 0h3m5 0h3" strokeWidth="2" strokeLinecap="round" />
+        <path className="accountant-tail" d="M20 54c13 9 26-10 12-18" fill="none" strokeWidth="6" strokeLinecap="round" />
+        <path className="accountant-body" d="M33 48c24-25 55-25 80 0s55 25 82 0 50-20 70 3" fill="none" strokeWidth="12" strokeLinecap="round" />
+        <circle className="accountant-head" cx="246" cy="49" r="14" />
+        <circle className="accountant-eye" cx="250" cy="44" r="2" />
+        <path className="accountant-tongue" d="M259 50l10-3m-10 3l10 4" fill="none" strokeWidth="2" strokeLinecap="round" />
+        <path className="accountant-coil" d="M178 47c10-22 44-20 48 1 4 23-36 28-43 8" fill="none" strokeWidth="5" strokeLinecap="round" />
       </svg>
-      <progress value={progress || undefined} max={1} />
+      {done && <span className="ready-chip">Results ready</span>}
     </div>
   );
 }
@@ -1266,7 +1266,7 @@ function calculateExact(members: Member[]) {
     highestPaf: Math.max(...pafs),
     averageStage: average(rows.map((row) => row.stageAvg)),
     averagePresentation: average(rows.map((row) => row.presentation)),
-    releasedSummary: releasedRow ? `${releasedRow.weighted.toFixed(2)} before any course rounding` : ""
+    releasedSummary: releasedRow ? `${releasedRow.weighted.toFixed(2)} before course rounding` : ""
   };
 }
 
@@ -1327,8 +1327,17 @@ function duplicateNameWarning(members: Member[]) {
 
 function resultText(rows: ResultRow[]) {
   return [
-    ["Student", "Stage average", "Presentation", "Team capstone grade", "Individual project grade after PAF", "PAF", "Feasibility"],
-    ...rows.map((row) => [row.name, formatGrade(row.stageAvg), formatGrade(row.presentation), formatGrade(row.teamCapstone), formatGrade(row.individualProject), row.paf.toFixed(3), row.feasibility])
+    ["Student", "Stage avg", "Presentation", "Team capstone grade", "PAF", "Individual project grade", "Weighted result", "Feasibility"],
+    ...rows.map((row) => [
+      row.name,
+      formatGrade(row.stageAvg),
+      formatGrade(row.presentation),
+      formatGrade(row.teamCapstone),
+      formatPaf(row.paf),
+      formatGrade(row.individualProject),
+      formatGrade(row.weighted),
+      row.feasibility
+    ])
   ]
     .map((line) => line.join("\t"))
     .join("\n");
@@ -1339,7 +1348,7 @@ function summaryText(exact: ReturnType<typeof calculateExact>, seed: string) {
 }
 
 function shortReleasedNote() {
-  return "Individual project grade comes from the team project grade, your PAF, peer feedback, staff observations, and GitHub data";
+  return "Individual project grade comes from the team capstone grade, your PAF factor, peer feedback, staff observations, and GitHub data";
 }
 
 function average(values: readonly number[]) {
@@ -1352,6 +1361,10 @@ function inputClass(invalid: boolean, touched: boolean) {
 
 function formatPercent(value: number) {
   return Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
+}
+
+function formatPaf(value: number) {
+  return Number.isFinite(value) ? `${value.toFixed(2)} · ${Math.round(value * 100)}%` : "—";
 }
 
 function slug(value: string) {

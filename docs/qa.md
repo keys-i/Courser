@@ -3,8 +3,6 @@
 - Light mode looks warm, not plain white.
 - Dark mode looks fun, not harsh black.
 - Website title says Courser.
-- Hero does not say "Definitely not Cursor".
-- Hero does not say "Marks in. Panic out".
 - Theme toggle sun/moon works.
 - Snake animation is a real character, not a wiggly line.
 - Accessibility button is reachable by keyboard.
