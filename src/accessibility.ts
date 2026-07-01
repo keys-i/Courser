@@ -5,13 +5,23 @@ export type AccessibilitySettings = {
   contrast: boolean;
   largeText: boolean;
   dyslexiaSpacing: boolean;
+  focusBoost: boolean;
+  calmMode: boolean;
+  underlineLinks: boolean;
+  monochromeMedals: boolean;
+  pauseMascot: boolean;
 };
 
 export const defaultAccessibility = (systemReducedMotion = false): AccessibilitySettings => ({
   reduceMotion: systemReducedMotion,
   contrast: false,
   largeText: false,
-  dyslexiaSpacing: false
+  dyslexiaSpacing: false,
+  focusBoost: false,
+  calmMode: false,
+  underlineLinks: false,
+  monochromeMedals: false,
+  pauseMascot: false
 });
 
 export function themeToggleLabel(theme: Theme): string {

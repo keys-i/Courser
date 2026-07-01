@@ -4,12 +4,8 @@ export type StudentStatus = (typeof VALID_STATUSES)[number];
 
 export type StudentInput = {
   name?: string;
-  stage1?: string | number;
-  stage2?: string | number;
-  stage3?: string | number;
+  stageMarks?: string;
   presentation?: string | number;
-  teamCapstone?: string | number;
-  individualProject?: string | number;
   overall?: string | number;
   status?: StudentStatus;
 };
@@ -35,7 +31,7 @@ export type RankedPaf = {
   tied: boolean;
 };
 
-export type FeasibilityLabel = "Normal" | "Boosted" | "High" | "Sus" | "Course-rule check";
+export type FeasibilityLabel = "Impossible" | "Normal" | "Boosted" | "High" | "Sus" | "Course-rule check";
 
 const TIE_EPSILON = 0.0001;
 
@@ -107,16 +103,16 @@ export function rankPafs(rows: readonly { id: string; name: string; paf: number 
     const badge =
       rank === 1
         ? tied
-          ? "Tied Top PAF"
-          : "Top PAF"
+          ? "Tied Gold"
+          : "Gold"
         : rank === 2
           ? tied
-            ? "Tied 2nd"
-            : "2nd"
+            ? "Tied Silver"
+            : "Silver"
           : rank === 3
             ? tied
-              ? "Tied 3rd"
-              : "3rd"
+              ? "Tied Bronze"
+              : "Bronze"
             : undefined;
 
     for (const row of group) {
@@ -143,28 +139,17 @@ export function formatGrade(value: number, digits = 2): string {
 export function validateStudentInput(student: StudentInput): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const stage1 = toGradeNumber(student.stage1);
-  const stage2 = toGradeNumber(student.stage2);
-  const stage3 = toGradeNumber(student.stage3);
+  const stages = parseStageCode(String(student.stageMarks ?? ""));
   const presentation = toGradeNumber(student.presentation);
-  const teamCapstone = optionalGradeNumber(student.teamCapstone);
-  const directIndividual = optionalGradeNumber(student.individualProject);
   const overall = optionalGradeNumber(student.overall);
 
-  if (stage1 === null) errors.push("Stage 1 must be a number from 1 to 7.");
-  if (stage2 === null) errors.push("Stage 2 must be a number from 1 to 7.");
-  if (stage3 === null) errors.push("Stage 3 must be a number from 1 to 7.");
+  if (!stages) errors.push("Stage marks must be exactly three digits from 1 to 7.");
   if (presentation === null) errors.push("Presentation must be a number from 1 to 7.");
-  if (teamCapstone === null) errors.push("Team capstone must be blank or a number from 1 to 7.");
-  if (directIndividual === null) errors.push("Individual project must be blank or a number from 1 to 7.");
-  if (overall === null) errors.push("Weighted result must be blank or a number from 1 to 7.");
-  if (directIndividual === undefined && overall === undefined) errors.push("Add individual project grade or weighted result.");
+  if (overall === null || overall === undefined) errors.push("Final must be a number from 1 to 7.");
 
-  const average = stage1 !== null && stage2 !== null && stage3 !== null ? stageAverage(stage1, stage2, stage3) : undefined;
+  const average = stages ? stageAverage(stages[0], stages[1], stages[2]) : undefined;
   const individualProject =
-    directIndividual !== null && directIndividual !== undefined
-      ? directIndividual
-      : overall !== null && overall !== undefined && average !== undefined && presentation !== null
+    overall !== null && overall !== undefined && average !== undefined && presentation !== null
       ? individualProjectFromWeightedResult(overall, average, presentation)
       : undefined;
 
@@ -179,7 +164,6 @@ export function validateStudentInput(student: StudentInput): ValidationResult {
     warnings,
     stageAverage: average,
     presentation: presentation ?? undefined,
-    teamCapstone: teamCapstone ?? undefined,
     individualProject,
     overall: overall ?? undefined
   };
@@ -214,7 +198,7 @@ export function classifyPafFeasibility(
   individualProject: number,
   teamCapstone = 1
 ): FeasibilityLabel {
-  if (teamCapstone <= 0 || individualProject < MIN_MARK) return "Course-rule check";
+  if (memberPaf < 0 || teamCapstone <= 0 || individualProject < MIN_MARK) return "Impossible";
   if (individualProject > MAX_MARK) return "Course-rule check";
   if (memberPaf > 2) return "Sus";
   if (memberPaf < 0.5) return "Sus";

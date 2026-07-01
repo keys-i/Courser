@@ -3,6 +3,7 @@ import {
   individualProjectFromWeightedResult,
   inferTeamCapstone,
   pafForStudent,
+  parseStageCode,
   stageAverage,
   toGradeNumber,
   type StudentStatus
@@ -15,8 +16,6 @@ export type MissingRanges = {
   stage2: GradeRange;
   stage3: GradeRange;
   presentation: GradeRange;
-  teamCapstone: GradeRange;
-  individualProject: GradeRange;
   overall: GradeRange;
 };
 
@@ -24,12 +23,8 @@ export type SimulationStudent = {
   id: string;
   name: string;
   status: StudentStatus;
-  stage1?: string | number;
-  stage2?: string | number;
-  stage3?: string | number;
+  stageMarks?: string;
   presentation?: string | number;
-  teamCapstone?: string | number;
-  individualProject?: string | number;
   overall?: string | number;
   ranges: MissingRanges;
 };
@@ -84,8 +79,6 @@ export const defaultRanges = (): MissingRanges => ({
   stage2: { min: MIN_MARK, max: MAX_MARK },
   stage3: { min: MIN_MARK, max: MAX_MARK },
   presentation: { min: MIN_MARK, max: MAX_MARK },
-  teamCapstone: { min: MIN_MARK, max: MAX_MARK },
-  individualProject: { min: MIN_MARK, max: MAX_MARK },
   overall: { min: MIN_MARK, max: MAX_MARK }
 });
 
@@ -144,31 +137,23 @@ export function runSimulationBatch(students: readonly SimulationStudent[], optio
   for (let i = 0; i < options.iterations; i++) {
     const random = seededRandom(`${options.seed}:${(options.start ?? 0) + i}`);
     const individualProjects: number[] = [];
-    const teamCapstones: number[] = [];
 
     for (const student of students) {
       const missing = student.status === "missing";
-      const stage1 = toGradeNumber(student.stage1) ?? (missing ? sampleRange(student.ranges.stage1, random, true) : NaN);
-      const stage2 = toGradeNumber(student.stage2) ?? (missing ? sampleRange(student.ranges.stage2, random, true) : NaN);
-      const stage3 = toGradeNumber(student.stage3) ?? (missing ? sampleRange(student.ranges.stage3, random, true) : NaN);
+      const stages = parseStageCode(String(student.stageMarks ?? ""));
+      const stage1 = stages?.[0] ?? (missing ? sampleRange(student.ranges.stage1, random, true) : NaN);
+      const stage2 = stages?.[1] ?? (missing ? sampleRange(student.ranges.stage2, random, true) : NaN);
+      const stage3 = stages?.[2] ?? (missing ? sampleRange(student.ranges.stage3, random, true) : NaN);
       const presentation =
         toGradeNumber(student.presentation) ?? (missing ? sampleRange(student.ranges.presentation, random) : NaN);
-      const teamCapstone =
-        optionalMark(student.teamCapstone) ?? (missing ? sampleRange(student.ranges.teamCapstone, random) : NaN);
-      const directIndividual =
-        optionalMark(student.individualProject) ?? (missing ? sampleRange(student.ranges.individualProject, random) : NaN);
       const overall = optionalMark(student.overall) ?? (missing ? sampleRange(student.ranges.overall, random) : NaN);
       const stageAvg = stageAverage(stage1, stage2, stage3);
-      const individualProject =
-        Number.isFinite(directIndividual) && directIndividual > 0
-          ? directIndividual
-          : individualProjectFromWeightedResult(overall, stageAvg, presentation);
+      const individualProject = individualProjectFromWeightedResult(overall, stageAvg, presentation);
 
       individualProjects.push(individualProject);
-      if (Number.isFinite(teamCapstone)) teamCapstones.push(teamCapstone);
     }
 
-    const rawT = teamCapstones.length ? average(teamCapstones) : inferTeamCapstone(individualProjects);
+    const rawT = inferTeamCapstone(individualProjects);
     if (!Number.isFinite(rawT) || rawT <= 0) {
       invalid++;
       continue;
@@ -248,10 +233,6 @@ function optionalMark(value: unknown): number | undefined {
   return toGradeNumber(value) ?? NaN;
 }
 
-function average(values: readonly number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
 function probability(results: readonly SimulationIteration[], predicate: (result: SimulationIteration) => boolean): number {
   return results.length ? results.filter(predicate).length / results.length : 0;
 }
@@ -263,9 +244,5 @@ function rangeLabel(key: keyof MissingRanges) {
       ? "Stage 2"
       : key === "stage3"
         ? "Stage 3"
-        : key === "teamCapstone"
-          ? "Team capstone"
-          : key === "individualProject"
-            ? "Individual project"
-            : key[0].toUpperCase() + key.slice(1);
+        : key[0].toUpperCase() + key.slice(1);
 }

@@ -4,12 +4,8 @@ import type { StudentStatus } from "./gradeMath";
 export type UrlMember = {
   id?: string;
   name: string;
-  stage1: string;
-  stage2: string;
-  stage3: string;
+  stageMarks: string;
   presentation: string;
-  teamCapstone: string;
-  individualProject: string;
   overall: string;
   status: StudentStatus;
   ranges: MissingRanges;
@@ -31,48 +27,33 @@ export function refreshSeedState<T extends { seed: string; stale?: boolean }>(st
 }
 
 export function encodeUrlState(state: UrlState): string {
-  const compact = {
-    v: 3,
-    s: state.seed,
-    m: state.members.map((member) => [
-      member.name,
-      member.stage1,
-      member.stage2,
-      member.stage3,
-      member.presentation,
-      member.teamCapstone,
-      member.individualProject,
-      member.overall,
-      member.status === "missing" ? 1 : 0,
-      member.status === "missing" ? packRanges(member.ranges) : ""
-    ])
-  };
-  return base64UrlEncode(JSON.stringify(compact));
+  const rows = trimBlankTail(state.members)
+    .map((member) => {
+      const fields = [
+        safe(member.name),
+        member.stageMarks,
+        member.presentation,
+        member.overall,
+        member.status === "missing" ? "m" : "p"
+      ];
+      if (member.status === "missing") fields.push(packRanges(member.ranges));
+      return fields.join(":");
+    })
+    .join(";");
+  return ["1", state.seed.replace("SNAKE-", "S"), rows].join(".");
 }
 
 export function decodeUrlState(value: string): UrlState | null {
   try {
-    const raw = JSON.parse(base64UrlDecode(value)) as { s?: unknown; m?: unknown };
-    if (!Array.isArray(raw.m) || typeof raw.s !== "string") return null;
-    return {
-      seed: raw.s,
-      members: raw.m.map((row) => {
-        if (!Array.isArray(row)) throw new Error("bad row");
-        const status: StudentStatus = row[8] === 1 ? "missing" : "complete";
-        return {
-          name: String(row[0] ?? ""),
-          stage1: String(row[1] ?? ""),
-          stage2: String(row[2] ?? ""),
-          stage3: String(row[3] ?? ""),
-          presentation: String(row[4] ?? ""),
-          teamCapstone: String(row[5] ?? ""),
-          individualProject: String(row[6] ?? ""),
-          overall: String(row[7] ?? ""),
-          status,
-          ranges: status === "missing" ? unpackRanges(String(row[9] ?? "")) : defaultRanges()
-        };
-      })
-    };
+    const firstDot = value.indexOf(".");
+    const secondDot = value.indexOf(".", firstDot + 1);
+    if (firstDot < 0 || secondDot < 0) return null;
+    const version = value.slice(0, firstDot);
+    const seedPart = value.slice(firstDot + 1, secondDot);
+    const rowsPart = value.slice(secondDot + 1);
+    if (version !== "1" || !/^S\d{5}$/.test(seedPart)) return null;
+    const rows = rowsPart ? rowsPart.split(";").map(unpackRow) : blankUrlMembers();
+    return { seed: `SNAKE-${seedPart.slice(1)}`, members: rows.length ? rows : blankUrlMembers() };
   } catch {
     return null;
   }
@@ -81,14 +62,10 @@ export function decodeUrlState(value: string): UrlState | null {
 export function blankUrlMembers(count = 3): UrlMember[] {
   return Array.from({ length: count }, () => ({
     name: "",
-    stage1: "",
-    stage2: "",
-    stage3: "",
+    stageMarks: "",
     presentation: "",
-    teamCapstone: "",
-    individualProject: "",
     overall: "",
-    status: "complete",
+    status: "present",
     ranges: defaultRanges()
   }));
 }
@@ -97,16 +74,39 @@ export function decodeUrlStateOrBlank(value: string, seed = generateSeed()): Url
   return decodeUrlState(value) ?? { members: blankUrlMembers(), seed };
 }
 
+function unpackRow(value: string): UrlMember {
+  const [name = "", stageMarks = "", presentation = "", overall = "", statusRaw = "p", rangesRaw = ""] = value.split(":");
+  const status: StudentStatus = statusRaw === "m" ? "missing" : "present";
+  return {
+    name: unsafe(name),
+    stageMarks,
+    presentation,
+    overall,
+    status,
+    ranges: status === "missing" ? unpackRanges(rangesRaw) : defaultRanges()
+  };
+}
+
+function trimBlankTail(members: UrlMember[]) {
+  const rows = [...members];
+  while (rows.length > 3 && isBlank(rows[rows.length - 1])) rows.pop();
+  return rows;
+}
+
+function isBlank(member: UrlMember) {
+  return !member.name.trim() && !member.stageMarks.trim() && !member.presentation.trim() && !member.overall.trim() && member.status === "present";
+}
+
 function packRanges(ranges: MissingRanges): string {
-  return (["stage1", "stage2", "stage3", "presentation", "teamCapstone", "individualProject", "overall"] as const)
+  return (["stage1", "stage2", "stage3", "presentation", "overall"] as const)
     .map((key) => `${ranges[key].min}-${ranges[key].max}`)
-    .join(".");
+    .join(",");
 }
 
 function unpackRanges(value: string): MissingRanges {
   const fallback = defaultRanges();
-  const keys = ["stage1", "stage2", "stage3", "presentation", "teamCapstone", "individualProject", "overall"] as const;
-  const parts = value.split(".");
+  const keys = ["stage1", "stage2", "stage3", "presentation", "overall"] as const;
+  const parts = value.split(",");
   return keys.reduce((ranges, key, index) => {
     const [min, max] = (parts[index] || "").split("-").map(Number);
     ranges[key] = {
@@ -117,11 +117,10 @@ function unpackRanges(value: string): MissingRanges {
   }, fallback);
 }
 
-function base64UrlEncode(value: string): string {
-  return btoa(encodeURIComponent(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+function safe(value: string) {
+  return encodeURIComponent(value.trim()).replace(/%20/g, "+");
 }
 
-function base64UrlDecode(value: string): string {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  return decodeURIComponent(atob(padded));
+function unsafe(value: string) {
+  return decodeURIComponent(value.replace(/\+/g, "%20"));
 }

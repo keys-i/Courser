@@ -55,6 +55,15 @@
   letter-spacing: 0.02em;
 }
 
+:root[data-focus="boost"] {
+  --focus: 0 0 0 5px color-mix(in srgb, var(--snake) 45%, transparent);
+}
+
+:root[data-links="underlined"] a {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -392,6 +401,21 @@ h2 {
   letter-spacing: 0;
 }
 
+.result-heading {
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.result-heading.good {
+  color: var(--good);
+  animation: result-pop 520ms ease;
+}
+
+.result-heading.bad {
+  color: var(--bad);
+}
+
 .hint {
   margin: 0.35rem 0 0;
   color: var(--muted);
@@ -436,6 +460,30 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
+}
+
+.stage-key {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(8rem, 1fr));
+  gap: 0.55rem;
+  margin: 0.9rem 0 1rem;
+}
+
+.stage-key span {
+  display: grid;
+  gap: 0.18rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.62rem;
+  background: color-mix(in srgb, var(--card-2) 72%, transparent);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.stage-key strong {
+  color: var(--text);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
 }
 
 table {
@@ -565,6 +613,20 @@ tbody tr:last-child td {
   white-space: nowrap;
 }
 
+.empty-result {
+  display: inline-flex;
+  gap: 0.6rem;
+  align-items: center;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.snake-badge {
+  width: 3.1rem;
+  height: 1.65rem;
+  color: var(--snake-dark);
+}
+
 .rank-gold {
   box-shadow:
     inset 6px 0 0 #f0ba36,
@@ -641,6 +703,11 @@ tbody tr:last-child td {
 
 .feasibility.course-rule-check {
   color: var(--bad);
+}
+
+.feasibility.impossible {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
 }
 
 .check-controls {
@@ -739,8 +806,7 @@ tbody tr:last-child td {
 }
 
 .summary {
-  position: sticky;
-  top: 1rem;
+  position: static;
   display: grid;
   gap: 0.65rem;
 }
@@ -955,6 +1021,32 @@ tbody tr:last-child td {
   animation: none;
 }
 
+:root[data-mascot="paused"] .accountant-snake,
+:root[data-mascot="paused"] .accountant-eye,
+:root[data-mascot="paused"] .courser-logo,
+:root[data-calm="calm"] .logo-eye {
+  animation: none;
+}
+
+:root[data-calm="calm"] .math-chips,
+:root[data-calm="calm"] .ready-chip {
+  display: none;
+}
+
+:root[data-medals="mono"] .rank-gold,
+:root[data-medals="mono"] .rank-silver,
+:root[data-medals="mono"] .rank-bronze {
+  background: color-mix(in srgb, var(--card-2) 60%, transparent);
+  box-shadow:
+    inset 6px 0 0 var(--text),
+    inset 0 0 0 1px var(--line);
+}
+
+:root[data-medals="mono"] .rank-badge {
+  color: var(--text);
+  animation: none;
+}
+
 .access-button,
 .github-button {
   position: fixed;
@@ -1145,6 +1237,23 @@ tbody tr:last-child td {
   }
 }
 
+@keyframes result-pop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-1px);
+  }
+}
+
+@media (min-width: 1180px) {
+  .summary {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
 @media (max-width: 1080px) {
   .layout {
     grid-template-columns: 1fr;
@@ -1158,6 +1267,7 @@ tbody tr:last-child td {
 
   .check-controls,
   .metrics-grid,
+  .stage-key,
   .formula-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1184,6 +1294,7 @@ tbody tr:last-child td {
   .summary,
   .check-controls,
   .metrics-grid,
+  .stage-key,
   .formula-grid {
     grid-template-columns: 1fr;
   }

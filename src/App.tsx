@@ -10,17 +10,16 @@ import {
   type AccessibilitySettings,
   type Theme
 } from "./accessibility";
-import { GITHUB_PROFILE_URL, MAX_MARK, MIN_MARK, MIN_TEAM_SIZE, PAF_FACTOR_NOTE, RADHESH_RELEASED_EXAMPLE, RELEASED_GRADE_NOTE, TRUSTED_FORMULAS } from "./constants";
+import { GITHUB_PROFILE_URL, MAX_MARK, MIN_MARK, MIN_TEAM_SIZE, PAF_FACTOR_NOTE, TRUSTED_FORMULAS } from "./constants";
 import {
   classifyPafFeasibility,
   csvEscape,
   formatGrade,
-  individualProjectFromWeightedResult,
   inferTeamCapstone,
   pafForStudent,
+  parseStageCode,
   rankPafs,
   sortByPafDesc,
-  stageAverage,
   teamFeasibilityNotes,
   toGradeNumber,
   validateStudentInput,
@@ -41,7 +40,7 @@ import {
 } from "./simulation";
 import { SEED_EDITABLE, decodeUrlState, encodeUrlState, generateSeed, type UrlMember } from "./urlState";
 
-type Member = UrlMember & { id: string; peerEvaluation?: string };
+type Member = UrlMember & { id: string };
 
 type ResultRow = {
   id: string;
@@ -53,29 +52,25 @@ type ResultRow = {
   weighted: number;
   paf: number;
   feasibility: FeasibilityLabel;
-  peerEvaluation?: string;
   tier?: "gold" | "silver" | "bronze";
   badge?: string;
 };
 
-const STORAGE_KEY = "courser-state-v3";
+const STORAGE_KEY = "courser-state-v4";
 const THEME_KEY = "courser-theme";
 const ACCESS_KEY = "courser-accessibility";
-const URL_PREFIX = "#s=";
+const URL_KEY = "s";
 const LINK_LIMIT = 1800;
 const CHECK_MIN_MS = 700;
 const stageFields = [
-  { key: "stage1", title: "Stage 1", help: "API Functionality" },
-  { key: "stage2", title: "Stage 2", help: "Deployed to Cloud" },
-  { key: "stage3", title: "Stage 3", help: "Scalable Application" }
+  ["STAGE 1", "API Functionality"],
+  ["STAGE 2", "Deployed to Cloud"],
+  ["STAGE 3", "Scalable Application"]
 ] as const;
 const loadingLines = [
   "The snake is checking the caps",
-  "Running Vibes VAR",
   "Checking ghost teammate maths",
-  "Tapping the tiny calculator",
-  "Sorting PAF dots",
-  "Vibes VAR review in progress"
+  "The snake did the maths"
 ];
 
 let idCounter = 0;
@@ -89,37 +84,16 @@ function blankMember(): Member {
   return {
     id: makeId(),
     name: "",
-    stage1: "",
-    stage2: "",
-    stage3: "",
+    stageMarks: "",
     presentation: "",
-    teamCapstone: "",
-    individualProject: "",
     overall: "",
-    status: "complete",
+    status: "present",
     ranges: defaultRanges()
   };
 }
 
 function blankSquad() {
   return [blankMember(), blankMember(), blankMember()];
-}
-
-function radheshExample(): Member[] {
-  const released = RADHESH_RELEASED_EXAMPLE;
-  return [
-    {
-      ...blankMember(),
-      name: released.name,
-      stage1: String(released.stage1),
-      stage2: String(released.stage2),
-      stage3: String(released.stage3),
-      presentation: String(released.presentation),
-      teamCapstone: String(released.teamCapstone),
-      individualProject: String(released.individualProject),
-      peerEvaluation: released.peerEvaluation
-    }
-  ];
 }
 
 function displayName(member: Member, index: number) {
@@ -153,10 +127,10 @@ function initialAccess(systemReduced: boolean) {
 }
 
 function initialState() {
-  const hash = location.hash.startsWith(URL_PREFIX) ? location.hash.slice(URL_PREFIX.length) : "";
-  const decoded = hash ? decodeUrlState(hash) : null;
+  const encoded = new URLSearchParams(location.search).get(URL_KEY) || "";
+  const decoded = encoded ? decodeUrlState(encoded) : null;
   if (decoded) return { members: normalizeMembers(decoded.members), seed: decoded.seed, notice: "Share link loaded" };
-  if (hash) return { members: blankSquad(), seed: generateSeed(), notice: "Link was weird, blank squad loaded" };
+  if (encoded) return { members: blankSquad(), seed: generateSeed(), notice: "Link was weird, blank squad loaded" };
 
   const saved = storageGet(STORAGE_KEY);
   if (saved) {
@@ -182,19 +156,18 @@ function normalizeMembers(value: unknown): Member[] {
     return {
       id: String(item.id || makeId()),
       name: String(item.name || ""),
-      stage1: String(item.stage1 || ""),
-      stage2: String(item.stage2 || ""),
-      stage3: String(item.stage3 || ""),
+      stageMarks: String(item.stageMarks || legacyStageMarks(item)),
       presentation: String(item.presentation || ""),
-      teamCapstone: String(item.teamCapstone || ""),
-      individualProject: String(item.individualProject || ""),
       overall: String(item.overall || ""),
-      peerEvaluation: item.peerEvaluation ? String(item.peerEvaluation) : undefined,
-      status: item.status === "missing" ? "missing" : "complete",
+      status: item.status === "missing" ? "missing" : "present",
       ranges: normalizeRanges(item.ranges)
     };
   });
   return members.length ? members : blankSquad();
+}
+
+function legacyStageMarks(item: Partial<Member> & { stage1?: unknown; stage2?: unknown; stage3?: unknown }) {
+  return [item.stage1, item.stage2, item.stage3].every((value) => value !== undefined && value !== "") ? `${item.stage1}${item.stage2}${item.stage3}` : "";
 }
 
 function normalizeRanges(ranges?: Partial<MissingRanges>): MissingRanges {
@@ -204,8 +177,6 @@ function normalizeRanges(ranges?: Partial<MissingRanges>): MissingRanges {
     stage2: normalizeRange(ranges?.stage2, fallback.stage2),
     stage3: normalizeRange(ranges?.stage3, fallback.stage3),
     presentation: normalizeRange(ranges?.presentation, fallback.presentation),
-    teamCapstone: normalizeRange(ranges?.teamCapstone, fallback.teamCapstone),
-    individualProject: normalizeRange(ranges?.individualProject, fallback.individualProject),
     overall: normalizeRange(ranges?.overall, fallback.overall)
   };
 }
@@ -228,6 +199,10 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; tone: "good" | "bad" | "info" } | null>(
     initial.notice ? { text: initial.notice, tone: "info" } : null
   );
+  const [resultHeading, setResultHeading] = useState<{ text: "Result" | "Results Ready" | "Results Unavailable"; tone: "idle" | "good" | "bad" }>({
+    text: "Result",
+    tone: "idle"
+  });
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [access, setAccess] = useState<AccessibilitySettings>(() => initialAccess(systemReduced));
   const [accessOpen, setAccessOpen] = useState(false);
@@ -249,7 +224,9 @@ export default function App() {
   const cancelSimulation = useRef(false);
   const newNameRef = useRef<HTMLInputElement | null>(null);
   const toastTimer = useRef<number>();
+  const headingTimer = useRef<number>();
   const reducedMotion = animationMode(access, systemReduced) === "reduced";
+  const mascotPaused = reducedMotion || access.pauseMascot;
 
   const exact = useMemo(() => calculateExact(members), [members]);
   const simulationErrors = useMemo(() => validateSimulationInputs(members), [members]);
@@ -265,6 +242,11 @@ export default function App() {
     document.documentElement.dataset.contrast = access.contrast ? "more" : "normal";
     document.documentElement.dataset.text = access.largeText ? "large" : "normal";
     document.documentElement.dataset.spacing = access.dyslexiaSpacing ? "wide" : "normal";
+    document.documentElement.dataset.focus = access.focusBoost ? "boost" : "normal";
+    document.documentElement.dataset.calm = access.calmMode ? "calm" : "normal";
+    document.documentElement.dataset.links = access.underlineLinks ? "underlined" : "normal";
+    document.documentElement.dataset.medals = access.monochromeMedals ? "mono" : "metal";
+    document.documentElement.dataset.mascot = access.pauseMascot ? "paused" : "motion";
     storageSet(ACCESS_KEY, serializeAccessibility(access));
   }, [access, reducedMotion]);
 
@@ -277,7 +259,7 @@ export default function App() {
   }, [members, selectedId]);
 
   useEffect(() => {
-    if (!simulation.running || reducedMotion) return;
+    if (!simulation.running || reducedMotion || access.calmMode) return;
     const interval = window.setInterval(() => {
       setSimulation((current) => ({
         ...current,
@@ -285,7 +267,7 @@ export default function App() {
       }));
     }, 1400);
     return () => window.clearInterval(interval);
-  }, [simulation.running, reducedMotion]);
+  }, [simulation.running, reducedMotion, access.calmMode]);
 
   useEffect(() => {
     if (!accessOpen) return;
@@ -302,10 +284,16 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 1500);
   }
 
+  function flashResult(valid: boolean) {
+    window.clearTimeout(headingTimer.current);
+    setResultHeading(valid ? { text: "Results Ready", tone: "good" } : { text: "Results Unavailable", tone: "bad" });
+    headingTimer.current = window.setTimeout(() => setResultHeading({ text: "Result", tone: "idle" }), 1500);
+  }
+
   function announceCurrentResult() {
-    if (exact.available) showToast("Results ready", "good");
-    else if (members.some((member) => [member.stage1, member.stage2, member.stage3, member.presentation, member.individualProject, member.overall].some((value) => value.trim()))) {
-      showToast("Fix marks first", "bad");
+    if (exact.available) flashResult(true);
+    else if (members.some((member) => [member.stageMarks, member.presentation, member.overall].some((value) => value.trim()))) {
+      flashResult(false);
     }
   }
 
@@ -317,7 +305,7 @@ export default function App() {
         ? { ...current, running: false, stale: Boolean(current.summary), message, error: undefined }
         : current
     );
-    if (simulation.running || (simulation.summary && !simulation.stale)) showToast(message, "info");
+    if (simulation.running || (simulation.summary && !simulation.stale)) setNotice(message);
   }
 
   function updateMember(id: string, patch: Partial<Member>) {
@@ -347,30 +335,18 @@ export default function App() {
   }
 
   function removeMember(member: Member) {
-    const hasData = [member.name, member.stage1, member.stage2, member.stage3, member.presentation, member.teamCapstone, member.individualProject, member.overall].some((value) =>
-      value.trim()
-    );
+    const hasData = [member.name, member.stageMarks, member.presentation, member.overall].some((value) => value.trim());
     if (hasData && !window.confirm(`Remove ${member.name.trim() || "this member"}?`)) return;
     markCheckStale();
     setMembers((current) => current.filter((item) => item.id !== member.id));
     if (members.length - 1 < MIN_TEAM_SIZE) showToast("Need 3 people", "bad");
   }
 
-  function loadRadheshExample() {
-    if (!window.confirm("Load Radhesh's released-grade example? This replaces the current rows.")) return;
-    cancelSimulation.current = true;
-    setMembers(radheshExample());
-    setNotice("");
-    setChecked(true);
-    setResultVersion((version) => version + 1);
-    setSimulation({ running: false, progress: 0, message: "" });
-    showToast("Released marks loaded", "good");
-  }
-
   function refreshSeed() {
     const next = generateSeed();
     markCheckStale();
     setSeed(next);
+    flashResult(exact.available);
     showToast(`Seed: ${next}`, "info");
   }
 
@@ -395,24 +371,28 @@ export default function App() {
 
   function copyResult() {
     if (!exact.available) {
-      showToast("Fix marks first", "bad");
+      flashResult(false);
       return;
     }
+    flashResult(true);
     copyText(resultText(exact.rows), "Copied");
   }
 
   function exportCsv() {
-    if (!exact.available) return;
+    if (!exact.available) {
+      flashResult(false);
+      return;
+    }
     const rows = [
-      ["Student", "Stage avg", "Presentation", "Team capstone grade", "PAF", "Individual project grade", "Weighted result", "Feasibility"],
+      ["Student", "Stage avg", "Presentation", "Final", "Individual project grade", "Team capstone grade", "PAF", "Feasibility"],
       ...exact.rows.map((row) => [
         row.name,
         formatGrade(row.stageAvg),
         formatGrade(row.presentation),
+        formatGrade(row.weighted),
+        formatGrade(row.individualProject),
         formatGrade(row.teamCapstone),
         formatPaf(row.paf),
-        formatGrade(row.individualProject),
-        formatGrade(row.weighted),
         row.feasibility
       ])
     ];
@@ -423,14 +403,17 @@ export default function App() {
     link.download = "courser-results.csv";
     link.click();
     URL.revokeObjectURL(url);
+    flashResult(true);
     showToast("Spreadsheet snake deployed", "good");
   }
 
   function copyShareLink() {
     const encoded = encodeUrlState({ members, seed });
-    const url = `${location.origin}${location.pathname}${URL_PREFIX}${encoded}`;
+    const params = new URLSearchParams(location.search);
+    params.set(URL_KEY, encoded);
+    const url = `${location.origin}${location.pathname}?${params.toString()}`;
     if (url.length > LINK_LIMIT) {
-      copyText(summaryText(exact, seed), "Link got chunky. Summary copied");
+      copyText(summaryText(exact, seed), "Link got chunky, copied summary");
       return;
     }
     copyText(url, "Share link copied");
@@ -442,7 +425,7 @@ export default function App() {
       return;
     }
     if (!exact.available) {
-      showToast("Fix marks first", "bad");
+      flashResult(false);
       return;
     }
     const started = performance.now();
@@ -452,7 +435,7 @@ export default function App() {
         setChecking(false);
         setChecked(true);
         setResultVersion((version) => version + 1);
-        showToast("Results ready", "good");
+        flashResult(true);
       },
       Math.max(0, CHECK_MIN_MS - (performance.now() - started))
     );
@@ -461,7 +444,7 @@ export default function App() {
   function runRealityCheck() {
     if (!canRunCheck) {
       setSimulation({ running: false, progress: 0, message: "", error: simulationErrors[0] || exact.reason });
-      showToast("Fix marks first", "bad");
+      flashResult(false);
       return;
     }
     const started = performance.now();
@@ -474,7 +457,7 @@ export default function App() {
 
     cancelSimulation.current = false;
     setChecking(true);
-    setSimulation({ running: true, progress: 0, stale: false, message: reducedMotion ? "Run check" : loadingLines[0] });
+    setSimulation({ running: true, progress: 0, stale: false, message: reducedMotion || access.calmMode ? "Checking PAF" : loadingLines[0] });
 
     const finish = (summary: SimulationSummary) => {
       const wait = Math.max(0, CHECK_MIN_MS - (performance.now() - started));
@@ -483,14 +466,14 @@ export default function App() {
         setChecked(true);
         setResultVersion((version) => version + 1);
         setSimulation({ running: false, progress: 1, summary, stale: false, message: "Vibes VAR review complete" });
-        showToast("Results ready", "good");
+        flashResult(true);
       }, wait);
     };
 
     const tick = () => {
       if (cancelSimulation.current) {
         setChecking(false);
-        setSimulation((current) => ({ ...current, running: false, stale: Boolean(current.summary), message: "Stop the snake" }));
+        setSimulation((current) => ({ ...current, running: false, stale: Boolean(current.summary), message: "Inputs changed — run check again" }));
         return;
       }
       const count = Math.min(batchSize, total - done);
@@ -508,12 +491,6 @@ export default function App() {
     };
 
     window.requestAnimationFrame(tick);
-  }
-
-  function stopSnake() {
-    cancelSimulation.current = true;
-    setChecking(false);
-    setSimulation((current) => ({ ...current, running: false, stale: Boolean(current.summary), message: "Stop the snake" }));
   }
 
   return (
@@ -536,6 +513,11 @@ export default function App() {
           <AccessToggle label="Higher contrast" checked={access.contrast} onChange={(value) => setAccess({ ...access, contrast: value })} />
           <AccessToggle label="Larger text" checked={access.largeText} onChange={(value) => setAccess({ ...access, largeText: value })} />
           <AccessToggle label="More spacing" checked={access.dyslexiaSpacing} onChange={(value) => setAccess({ ...access, dyslexiaSpacing: value })} />
+          <AccessToggle label="Focus boost" checked={access.focusBoost} onChange={(value) => setAccess({ ...access, focusBoost: value })} />
+          <AccessToggle label="Calm mode" checked={access.calmMode} onChange={(value) => setAccess({ ...access, calmMode: value })} />
+          <AccessToggle label="Underline links" checked={access.underlineLinks} onChange={(value) => setAccess({ ...access, underlineLinks: value })} />
+          <AccessToggle label="Monochrome medals" checked={access.monochromeMedals} onChange={(value) => setAccess({ ...access, monochromeMedals: value })} />
+          <AccessToggle label="Pause mascot" checked={access.pauseMascot} onChange={(value) => setAccess({ ...access, pauseMascot: value })} />
           <button type="button" className="secondary" onClick={() => setAccess(defaultAccessibility(systemReduced))}>
             Reset
           </button>
@@ -566,35 +548,40 @@ export default function App() {
           <section className="panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Released marks</p>
+                <p className="eyebrow">Marks</p>
                 <h2>Input</h2>
               </div>
               <div className="button-row">
                 <button type="button" onClick={addMember}>
                   Add person
                 </button>
-                <button type="button" className="secondary" onClick={loadRadheshExample}>
-                  Load Radhesh example
-                </button>
               </div>
             </div>
             {exact.duplicateWarning && <p className="soft-warning">{exact.duplicateWarning}</p>}
             <p className="hint help-line">PAF 1.00 means 100% contribution</p>
+            <div className="stage-key" aria-label="Stage mark guide">
+              {stageFields.map(([title, help]) => (
+                <span key={title}>
+                  <strong>{title}</strong>
+                  {help}
+                </span>
+              ))}
+              <span>
+                <strong>PRESENTATION</strong>
+                Architecture Presentation
+              </span>
+            </div>
             <div className="table-shell input-table-shell">
               <table className="input-table">
                 <thead>
                   <tr>
                     <th>Name</th>
-                    {stageFields.map((stage) => (
-                      <th key={stage.key}>
-                        {stage.title}
-                        <small>{stage.help}</small>
-                      </th>
-                    ))}
+                    <th>
+                      Stage marks
+                      <small>3 digits, 1–7</small>
+                    </th>
                     <th>Presentation</th>
-                    <th>Team capstone</th>
-                    <th>Individual project</th>
-                    <th>Weighted result</th>
+                    <th>Final</th>
                     <th>Status</th>
                     <th>Remove</th>
                   </tr>
@@ -625,7 +612,7 @@ export default function App() {
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">PAF</p>
-                <h2>Result</h2>
+                <h2 className={`result-heading ${resultHeading.tone}`}>{resultHeading.text}</h2>
               </div>
               <div className="button-row">
                 <button type="button" onClick={checkEveryone} disabled={checking || simulation.running}>
@@ -642,7 +629,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-            {checking && !simulation.running && <SnakeCruncher reducedMotion={reducedMotion} done={checked} />}
+            {checking && !simulation.running && <SnakeCruncher reducedMotion={mascotPaused} done={checked} />}
             <ResultTable rows={exact.rows} version={resultVersion} reason={exact.reason} />
             {!!exact.warnings.length && (
               <ul className="warning-list">
@@ -664,12 +651,9 @@ export default function App() {
                 <button type="button" onClick={runRealityCheck} disabled={!canRunCheck}>
                   Run check
                 </button>
-                <button type="button" className="secondary" onClick={stopSnake} disabled={!simulation.running}>
-                  Stop the snake
-                </button>
               </div>
             </div>
-            {simulation.running && <SnakeCruncher reducedMotion={reducedMotion} done={false} />}
+            {simulation.running && <SnakeCruncher reducedMotion={mascotPaused} done={false} />}
             <div className="check-controls">
               <label>
                 <span>Iterations</span>
@@ -720,19 +704,19 @@ export default function App() {
             {simulation.running && (
               <div className="progress-wrap" aria-live="off">
                 <p>
-                  {reducedMotion ? "Run check" : simulation.message}
+                  {reducedMotion || access.calmMode ? "Checking PAF" : simulation.message}
                   <strong> {Math.round(simulation.progress * 100)}%</strong>
                 </p>
               </div>
             )}
             {simulation.error && <p className="status-bad">{simulation.error}</p>}
             {simulation.message && !simulation.running && <p className="hint">{simulation.message}</p>}
-            {simulation.summary && !simulation.stale && <CheckResults summary={simulation.summary} />}
+            {simulation.summary && !simulation.stale && <CheckResults summary={simulation.summary} calm={access.calmMode} />}
             {simulation.summary && simulation.stale && (
               <details className="previous-sim">
                 <summary>Previous check — stale</summary>
                 <p className="soft-warning">Inputs changed — run check again</p>
-                <CheckResults summary={simulation.summary} stale />
+                <CheckResults summary={simulation.summary} stale calm={access.calmMode} />
               </details>
             )}
           </section>
@@ -754,26 +738,16 @@ export default function App() {
           <section className="panel help-panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Released grades</p>
+                <p className="eyebrow">Course notes</p>
                 <h2>What PAF means</h2>
               </div>
             </div>
-            <p>{shortReleasedNote()}</p>
             <article className="info-card">
-              <strong>PAF is not out of 10</strong>
+              <strong>Individual project grade = team capstone grade × PAF</strong>
+              <p>PAF 1.00 means 100%</p>
               <p>{PAF_FACTOR_NOTE}</p>
+              <p>Peer feedback, staff observations, and GitHub data feed the factor</p>
             </article>
-            <details className="released-wording">
-              <summary>Released wording</summary>
-              <p>{RELEASED_GRADE_NOTE}</p>
-            </details>
-            {exact.rows.some((row) => row.peerEvaluation) && (
-              <div className="released-item">
-                <strong>Peer evaluation display</strong>
-                <span>{exact.rows.find((row) => row.peerEvaluation)?.peerEvaluation}</span>
-                <small>Gradebook display only, not a PAF grade</small>
-              </div>
-            )}
           </section>
         </section>
 
@@ -786,7 +760,6 @@ export default function App() {
               label="Team capstone"
               value={exact.available ? `${formatGrade(exact.teamCapstone, 2)}${exact.inferredTeamCapstone ? " inferred" : ""}` : "—"}
             />
-            <SummaryLine label="Team size" value={String(members.length)} />
             <SummaryLine label="Highest PAF" value={exact.available ? exact.highestPaf.toFixed(2) : "—"} />
             <div className="team-read">
               <span>Team read</span>
@@ -797,15 +770,9 @@ export default function App() {
                   ))}
                 </ul>
               ) : (
-                <p>{exact.available ? "Looks balanced" : "Need 3 people"}</p>
+                <p>{exact.available ? "Looks balanced" : members.length < MIN_TEAM_SIZE ? "Need 3 people" : exact.reason}</p>
               )}
             </div>
-            {exact.releasedSummary && (
-              <div className="released-summary">
-                <span>Released example</span>
-                <strong>{exact.releasedSummary}</strong>
-              </div>
-            )}
           </div>
         </aside>
       </div>
@@ -857,21 +824,22 @@ function InputRow({
           />
         </Field>
       </td>
-      {stageFields.map((stage) => (
-        <td key={stage.key}>
-          <NumberField
-            id={`${member.id}-${stage.key}`}
-            label={`${stage.title} — ${stage.help}`}
-            value={member[stage.key]}
-            touched={touched}
-            markTouched={blur}
-            onChange={(value) => updateMember(member.id, { [stage.key]: value })}
-          />
-          {member.status === "missing" && (
-            <RangePair id={member.id} name={stage.key} label={`${stage.title} range`} range={member.ranges[stage.key]} updateRange={updateRange} />
-          )}
-        </td>
-      ))}
+      <td>
+        <StageMarksField
+          id={`${member.id}-stageMarks`}
+          value={member.stageMarks}
+          touched={touched}
+          markTouched={blur}
+          onChange={(value) => updateMember(member.id, { stageMarks: value })}
+        />
+        {member.status === "missing" && (
+          <div className="range-stack">
+            <RangePair id={member.id} name="stage1" label="Stage 1 range" range={member.ranges.stage1} updateRange={updateRange} />
+            <RangePair id={member.id} name="stage2" label="Stage 2 range" range={member.ranges.stage2} updateRange={updateRange} />
+            <RangePair id={member.id} name="stage3" label="Stage 3 range" range={member.ranges.stage3} updateRange={updateRange} />
+          </div>
+        )}
+      </td>
       <td>
         <NumberField
           id={`${member.id}-presentation`}
@@ -884,48 +852,24 @@ function InputRow({
         {member.status === "missing" && <RangePair id={member.id} name="presentation" label="Presentation range" range={member.ranges.presentation} updateRange={updateRange} />}
       </td>
       <td>
-        <OptionalNumberField
-          id={`${member.id}-teamCapstone`}
-          label="Team capstone"
-          value={member.teamCapstone}
-          touched={touched}
-          markTouched={blur}
-          onChange={(value) => updateMember(member.id, { teamCapstone: value })}
-        />
-        {member.status === "missing" && <RangePair id={member.id} name="teamCapstone" label="Team capstone range" range={member.ranges.teamCapstone} updateRange={updateRange} />}
-      </td>
-      <td>
-        <OptionalNumberField
-          id={`${member.id}-individualProject`}
-          label="Individual project"
-          value={member.individualProject}
-          touched={touched}
-          markTouched={blur}
-          onChange={(value) => updateMember(member.id, { individualProject: value })}
-        />
-        {member.status === "missing" && (
-          <RangePair id={member.id} name="individualProject" label="Individual project range" range={member.ranges.individualProject} updateRange={updateRange} />
-        )}
-      </td>
-      <td>
-        <OptionalNumberField
+        <NumberField
           id={`${member.id}-overall`}
-          label="Weighted result"
+          label="Final"
           value={member.overall}
           touched={touched}
           markTouched={blur}
           onChange={(value) => updateMember(member.id, { overall: value })}
         />
-        {member.status === "missing" && <RangePair id={member.id} name="overall" label="Weighted result range" range={member.ranges.overall} updateRange={updateRange} />}
+        {member.status === "missing" && <RangePair id={member.id} name="overall" label="Final range" range={member.ranges.overall} updateRange={updateRange} />}
       </td>
       <td>
         <Field label="Status">
           <select value={member.status} onChange={(event) => updateMember(member.id, { status: event.target.value as StudentStatus })}>
-            <option value="complete">Complete</option>
-            <option value="missing">Missing / unresponsive</option>
+            <option value="present">Present</option>
+            <option value="missing">Missing</option>
           </select>
         </Field>
-        {member.status === "complete" && !validation.valid && <p className="inline-error">{validation.errors[0]}</p>}
+        {member.status === "present" && !validation.valid && <p className="inline-error">{validation.errors[0]}</p>}
         {!!rangeErrors.length && <p className="inline-error">{rangeErrors[0]}</p>}
       </td>
       <td>
@@ -957,15 +901,33 @@ function NumberField(props: {
   return <MarkInput {...props} optional={false} />;
 }
 
-function OptionalNumberField(props: {
+function StageMarksField({
+  id,
+  value,
+  touched,
+  markTouched,
+  onChange
+}: {
   id: string;
-  label: string;
   value: string;
   touched: Set<string>;
   markTouched: (key: string) => void;
   onChange: (value: string) => void;
 }) {
-  return <MarkInput {...props} optional />;
+  const invalid = parseStageCode(value) === null;
+  return (
+    <Field label="Stage marks">
+      <input
+        className={inputClass(invalid, touched.has(id))}
+        inputMode="numeric"
+        value={value}
+        placeholder="e.g. 754"
+        maxLength={3}
+        onBlur={() => markTouched(id)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
+  );
 }
 
 function MarkInput({
@@ -1039,12 +1001,12 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
             <th>Student</th>
             <th>Stage avg</th>
             <th>Presentation</th>
-            <th>Team capstone grade</th>
-            <th aria-sort="descending">PAF ↓</th>
+            <th>Final</th>
             <th>
               <span title="Team capstone grade × PAF">Individual project grade</span>
             </th>
-            <th>Weighted result</th>
+            <th>Team capstone grade</th>
+            <th aria-sort="descending">PAF ↓</th>
             <th>Feasibility</th>
           </tr>
         </thead>
@@ -1062,10 +1024,10 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
                 </th>
                 <td title={String(row.stageAvg)}>{formatGrade(row.stageAvg)}</td>
                 <td>{formatGrade(row.presentation)}</td>
+                <td title={String(row.weighted)}>{formatGrade(row.weighted)}</td>
+                <td title={String(row.individualProject)}>{formatGrade(row.individualProject)}</td>
                 <td>{formatGrade(row.teamCapstone)}</td>
                 <td title={String(row.paf)}>{formatPaf(row.paf)}</td>
-                <td title={String(row.individualProject)}>{formatGrade(row.individualProject)}</td>
-                <td title={String(row.weighted)}>{formatGrade(row.weighted)}</td>
                 <td>
                   <span className={`feasibility ${slug(row.feasibility)}`}>{row.feasibility}</span>
                 </td>
@@ -1073,7 +1035,12 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
             ))
           ) : (
             <tr>
-              <td colSpan={8}>{reason || "Need 3 people"}</td>
+              <td colSpan={8}>
+                <span className="empty-result">
+                  <SnakeBadge />
+                  {reason || "Need 3 people"}
+                </span>
+              </td>
             </tr>
           )}
         </tbody>
@@ -1082,11 +1049,11 @@ function ResultTable({ rows, version, reason }: { rows: ResultRow[]; version: nu
   );
 }
 
-function CheckResults({ summary, stale = false }: { summary: SimulationSummary; stale?: boolean }) {
+function CheckResults({ summary, stale = false, calm = false }: { summary: SimulationSummary; stale?: boolean; calm?: boolean }) {
   return (
     <div className={stale ? "sim-results stale" : "sim-results"}>
       <p className="verdict">{stale ? `Previous: ${summary.verdict}` : summary.verdict}</p>
-      <p className="hint">The snake did the maths · estimate, not proof</p>
+      <p className="hint">{calm ? "Estimate, not proof" : "The snake did the maths · estimate, not proof"}</p>
       <div className="metrics-grid">
         <Metric label="Valid runs" value={String(summary.valid)} />
         <Metric label="Skipped" value={String(summary.invalid)} />
@@ -1174,6 +1141,17 @@ function SnakeCruncher({ reducedMotion, done }: { reducedMotion: boolean; done: 
   );
 }
 
+function SnakeBadge() {
+  return (
+    <svg className="snake-badge" viewBox="0 0 54 28" aria-hidden="true">
+      <path d="M5 18c8-13 18-13 28-2 5 5 10 6 16 1" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+      <circle cx="44" cy="15" r="7" fill="currentColor" />
+      <circle cx="46" cy="12" r="1.2" fill="var(--card)" />
+      <path d="M50 16l4-2m-4 2l4 2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function AccessIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1207,8 +1185,7 @@ function calculateExact(members: Member[]) {
   const warnings: string[] = [];
   const duplicateWarning = duplicateNameWarning(members);
   if (duplicateWarning) warnings.push(duplicateWarning);
-  const releasedExampleOnly = members.length === 1 && members[0]?.name.trim() === RADHESH_RELEASED_EXAMPLE.name;
-  if (!releasedExampleOnly && members.length < MIN_TEAM_SIZE) return emptyExact("Need 3 people", warnings, duplicateWarning);
+  if (members.length < MIN_TEAM_SIZE) return emptyExact("Need 3 people", warnings, duplicateWarning);
   if (members.some((member) => member.status === "missing")) return emptyExact("Exact result unavailable — run check", warnings, duplicateWarning);
 
   const parsed = members.map((member, index) => ({ member, index, validation: validateStudentInput(member) }));
@@ -1216,15 +1193,14 @@ function calculateExact(members: Member[]) {
   if (invalid) return emptyExact(`${displayName(invalid.member, invalid.index)}: ${invalid.validation.errors[0]}`, warnings, duplicateWarning);
 
   const individualProjects = parsed.map(({ validation }) => validation.individualProject!);
-  const knownTeamCapstones = parsed.map(({ validation }) => validation.teamCapstone).filter((value): value is number => Number.isFinite(value));
-  const inferredTeamCapstone = knownTeamCapstones.length ? average(knownTeamCapstones) : inferTeamCapstone(individualProjects);
+  const inferredTeamCapstone = inferTeamCapstone(individualProjects);
   if (!Number.isFinite(inferredTeamCapstone) || inferredTeamCapstone <= 0) return emptyExact("Need a valid team capstone grade", warnings, duplicateWarning);
 
   parsed.forEach(({ member, index, validation }) => {
     validation.warnings.forEach((warning) => warnings.push(`${displayName(member, index)}: ${warning}`));
   });
 
-  const pafs = parsed.map(({ validation }) => pafForStudent(validation.individualProject!, validation.teamCapstone ?? inferredTeamCapstone));
+  const pafs = parsed.map(({ validation }) => pafForStudent(validation.individualProject!, inferredTeamCapstone));
   const ranks = rankPafs(
     parsed.map(({ member, index }, i) => ({
       id: member.id,
@@ -1234,39 +1210,35 @@ function calculateExact(members: Member[]) {
   );
   const rows = sortByPafDesc(
     parsed.map(({ member, index, validation }, i): ResultRow => {
-      const teamCapstone = validation.teamCapstone ?? inferredTeamCapstone;
       const weighted = weightedCourseResult(validation.stageAverage!, validation.presentation!, validation.individualProject!);
       return {
         id: member.id,
         name: displayName(member, index),
         stageAvg: validation.stageAverage!,
         presentation: validation.presentation!,
-        teamCapstone,
+        teamCapstone: inferredTeamCapstone,
         individualProject: validation.individualProject!,
         weighted,
         paf: pafs[i],
-        feasibility: classifyPafFeasibility(pafs[i], pafs, members.length, validation.individualProject!, teamCapstone),
-        peerEvaluation: member.peerEvaluation,
+        feasibility: classifyPafFeasibility(pafs[i], pafs, members.length, validation.individualProject!, inferredTeamCapstone),
         tier: ranks[i].tier,
         badge: ranks[i].badge
       };
     })
   );
 
-  const releasedRow = rows.find((row) => row.name === RADHESH_RELEASED_EXAMPLE.name);
   return {
     available: true,
-    reason: "Results ready",
+    reason: "Results Ready",
     rows,
     warnings,
     duplicateWarning,
     teamNotes: teamFeasibilityNotes(pafs, individualProjects, inferredTeamCapstone),
     teamCapstone: inferredTeamCapstone,
-    inferredTeamCapstone: !knownTeamCapstones.length,
+    inferredTeamCapstone: true,
     highestPaf: Math.max(...pafs),
     averageStage: average(rows.map((row) => row.stageAvg)),
-    averagePresentation: average(rows.map((row) => row.presentation)),
-    releasedSummary: releasedRow ? `${releasedRow.weighted.toFixed(2)} before course rounding` : ""
+    averagePresentation: average(rows.map((row) => row.presentation))
   };
 }
 
@@ -1282,8 +1254,7 @@ function emptyExact(reason: string, warnings: string[] = [], duplicateWarning = 
     inferredTeamCapstone: false,
     highestPaf: NaN,
     averageStage: NaN,
-    averagePresentation: NaN,
-    releasedSummary: ""
+    averagePresentation: NaN
   };
 }
 
@@ -1291,7 +1262,7 @@ function validateSimulationInputs(members: Member[]) {
   const errors: string[] = [];
   if (members.length < MIN_TEAM_SIZE) errors.push("Need 3 people");
   members.forEach((member, index) => {
-    if (member.status === "complete") {
+    if (member.status === "present") {
       validateStudentInput(member).errors.forEach((error) => errors.push(`${displayName(member, index)}: ${error}`));
       return;
     }
@@ -1305,12 +1276,8 @@ function toSimulationStudent(member: Member): SimulationStudent {
     id: member.id,
     name: member.name,
     status: member.status,
-    stage1: member.stage1,
-    stage2: member.stage2,
-    stage3: member.stage3,
+    stageMarks: member.stageMarks,
     presentation: member.presentation,
-    teamCapstone: member.teamCapstone,
-    individualProject: member.individualProject,
     overall: member.overall,
     ranges: member.ranges
   };
@@ -1327,15 +1294,15 @@ function duplicateNameWarning(members: Member[]) {
 
 function resultText(rows: ResultRow[]) {
   return [
-    ["Student", "Stage avg", "Presentation", "Team capstone grade", "PAF", "Individual project grade", "Weighted result", "Feasibility"],
+    ["Student", "Stage avg", "Presentation", "Final", "Individual project grade", "Team capstone grade", "PAF", "Feasibility"],
     ...rows.map((row) => [
       row.name,
       formatGrade(row.stageAvg),
       formatGrade(row.presentation),
+      formatGrade(row.weighted),
+      formatGrade(row.individualProject),
       formatGrade(row.teamCapstone),
       formatPaf(row.paf),
-      formatGrade(row.individualProject),
-      formatGrade(row.weighted),
       row.feasibility
     ])
   ]
@@ -1345,10 +1312,6 @@ function resultText(rows: ResultRow[]) {
 
 function summaryText(exact: ReturnType<typeof calculateExact>, seed: string) {
   return exact.available ? `Courser summary\nSeed: ${seed}\n${resultText(exact.rows)}` : `Courser summary\nSeed: ${seed}\n${exact.reason}`;
-}
-
-function shortReleasedNote() {
-  return "Individual project grade comes from the team capstone grade, your PAF factor, peer feedback, staff observations, and GitHub data";
 }
 
 function average(values: readonly number[]) {
