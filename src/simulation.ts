@@ -1,21 +1,22 @@
-import {
-  StudentStatus,
-  cloudAverage,
-  finalProjectAfterPAF,
-  pafForStudent,
-  parseCloudXYZ,
-  rawTeamProjectBeforePAF,
-  toGradeNumber
-} from "./gradeMath";
 import { MAX_MARK, MIN_MARK } from "./constants";
+import {
+  individualProjectFromWeightedResult,
+  inferTeamCapstone,
+  pafForStudent,
+  stageAverage,
+  toGradeNumber,
+  type StudentStatus
+} from "./gradeMath";
 
 export type GradeRange = { min: number; max: number };
 
 export type MissingRanges = {
-  x: GradeRange;
-  y: GradeRange;
-  z: GradeRange;
+  stage1: GradeRange;
+  stage2: GradeRange;
+  stage3: GradeRange;
   presentation: GradeRange;
+  teamCapstone: GradeRange;
+  individualProject: GradeRange;
   overall: GradeRange;
 };
 
@@ -23,8 +24,12 @@ export type SimulationStudent = {
   id: string;
   name: string;
   status: StudentStatus;
-  cloudXYZ?: string;
+  stage1?: string | number;
+  stage2?: string | number;
+  stage3?: string | number;
   presentation?: string | number;
+  teamCapstone?: string | number;
+  individualProject?: string | number;
   overall?: string | number;
   ranges: MissingRanges;
 };
@@ -34,7 +39,6 @@ export type SimulationOptions = {
   seed: string;
   start?: number;
   selectedId?: string;
-  customCap?: number | null;
   enforceGradeCap?: boolean;
 };
 
@@ -45,7 +49,6 @@ export type SimulationIteration = {
   minPaf: number;
   cap13: boolean;
   cap15: boolean;
-  customCap?: boolean;
   gradeCap: boolean;
 };
 
@@ -72,16 +75,17 @@ export type SimulationSummary = {
   probabilityAllUnder15: number;
   probabilitySelectedUnder13: number;
   probabilitySelectedUnder15: number;
-  probabilityCustomCap?: number;
   probabilityGradeCap?: number;
   verdict: string;
 };
 
 export const defaultRanges = (): MissingRanges => ({
-  x: { min: MIN_MARK, max: MAX_MARK },
-  y: { min: MIN_MARK, max: MAX_MARK },
-  z: { min: MIN_MARK, max: MAX_MARK },
+  stage1: { min: MIN_MARK, max: MAX_MARK },
+  stage2: { min: MIN_MARK, max: MAX_MARK },
+  stage3: { min: MIN_MARK, max: MAX_MARK },
   presentation: { min: MIN_MARK, max: MAX_MARK },
+  teamCapstone: { min: MIN_MARK, max: MAX_MARK },
+  individualProject: { min: MIN_MARK, max: MAX_MARK },
   overall: { min: MIN_MARK, max: MAX_MARK }
 });
 
@@ -124,8 +128,12 @@ export function validRange(range: GradeRange): boolean {
 
 export function validateMissingRanges(ranges: MissingRanges): string[] {
   return (Object.entries(ranges) as [keyof MissingRanges, GradeRange][])
-    .filter(([key, range]) => !validRange(range) || (["x", "y", "z"].includes(key) && Math.ceil(range.min) > Math.floor(range.max)))
-    .map(([key]) => `${key.toUpperCase()} range must stay within 1-7 and min must be <= max.`);
+    .filter(
+      ([key, range]) =>
+        !validRange(range) ||
+        (["stage1", "stage2", "stage3"].includes(key) && Math.ceil(range.min) > Math.floor(range.max))
+    )
+    .map(([key]) => `${rangeLabel(key)} range must stay within 1-7 and min must be <= max.`);
 }
 
 export function runSimulationBatch(students: readonly SimulationStudent[], options: SimulationOptions): SimulationBatch {
@@ -135,51 +143,52 @@ export function runSimulationBatch(students: readonly SimulationStudent[], optio
 
   for (let i = 0; i < options.iterations; i++) {
     const random = seededRandom(`${options.seed}:${(options.start ?? 0) + i}`);
-    const finalProjects: number[] = [];
+    const individualProjects: number[] = [];
+    const teamCapstones: number[] = [];
 
     for (const student of students) {
-      const exactCloud = parseCloudXYZ(String(student.cloudXYZ ?? ""));
       const missing = student.status === "missing";
-      const cloudDigits =
-        exactCloud ??
-        (missing
-          ? [
-              sampleRange(student.ranges.x, random, true),
-              sampleRange(student.ranges.y, random, true),
-              sampleRange(student.ranges.z, random, true)
-            ]
-          : null);
+      const stage1 = toGradeNumber(student.stage1) ?? (missing ? sampleRange(student.ranges.stage1, random, true) : NaN);
+      const stage2 = toGradeNumber(student.stage2) ?? (missing ? sampleRange(student.ranges.stage2, random, true) : NaN);
+      const stage3 = toGradeNumber(student.stage3) ?? (missing ? sampleRange(student.ranges.stage3, random, true) : NaN);
       const presentation =
-        toGradeNumber(student.presentation) ??
-        (missing ? sampleRange(student.ranges.presentation, random) : NaN);
-      const overall =
-        toGradeNumber(student.overall) ?? (missing ? sampleRange(student.ranges.overall, random) : NaN);
-      const cloud = cloudDigits ? cloudAverage(cloudDigits) : NaN;
-      finalProjects.push(finalProjectAfterPAF(overall, cloud, presentation));
+        toGradeNumber(student.presentation) ?? (missing ? sampleRange(student.ranges.presentation, random) : NaN);
+      const teamCapstone =
+        optionalMark(student.teamCapstone) ?? (missing ? sampleRange(student.ranges.teamCapstone, random) : NaN);
+      const directIndividual =
+        optionalMark(student.individualProject) ?? (missing ? sampleRange(student.ranges.individualProject, random) : NaN);
+      const overall = optionalMark(student.overall) ?? (missing ? sampleRange(student.ranges.overall, random) : NaN);
+      const stageAvg = stageAverage(stage1, stage2, stage3);
+      const individualProject =
+        Number.isFinite(directIndividual) && directIndividual > 0
+          ? directIndividual
+          : individualProjectFromWeightedResult(overall, stageAvg, presentation);
+
+      individualProjects.push(individualProject);
+      if (Number.isFinite(teamCapstone)) teamCapstones.push(teamCapstone);
     }
 
-    const rawT = rawTeamProjectBeforePAF(finalProjects);
+    const rawT = teamCapstones.length ? average(teamCapstones) : inferTeamCapstone(individualProjects);
     if (!Number.isFinite(rawT) || rawT <= 0) {
       invalid++;
       continue;
     }
 
-    const pafs = finalProjects.map((project) => pafForStudent(project, rawT));
+    const pafs = individualProjects.map((project) => pafForStudent(project, rawT));
     if (pafs.some((paf) => !Number.isFinite(paf))) {
       invalid++;
       continue;
     }
 
     const nonNegative = pafs.every((paf) => paf >= 0);
-    const gradeCap = !options.enforceGradeCap || finalProjects.every((project) => project >= MIN_MARK && project <= MAX_MARK);
+    const gradeCap = !options.enforceGradeCap || individualProjects.every((project) => project >= MIN_MARK && project <= MAX_MARK);
     results.push({
       rawT,
       selectedPaf: pafs[selectedIndex] ?? pafs[0],
       maxPaf: Math.max(...pafs),
       minPaf: Math.min(...pafs),
-      cap13: nonNegative && pafs.every((paf) => paf <= 1.3),
-      cap15: nonNegative && pafs.every((paf) => paf <= 1.5),
-      customCap: options.customCap ? nonNegative && pafs.every((paf) => paf <= options.customCap!) : undefined,
+      cap13: nonNegative && pafs.every((paf) => paf <= 1.4),
+      cap15: nonNegative && pafs.every((paf) => paf <= 2),
       gradeCap
     });
   }
@@ -211,32 +220,52 @@ export function summarizeSimulationResults(
     max: values.length ? Math.max(...values) : NaN
   });
   const valid = results.length;
-  const all13 = probability(results, (result) => result.cap13);
-  const all15 = probability(results, (result) => result.cap15);
+  const allOkay = probability(results, (result) => result.cap13);
 
   return {
     valid,
     invalid,
     rawT: stat(results.map((result) => result.rawT)),
     selectedPaf: stat(results.map((result) => result.selectedPaf)),
-    probabilityAllUnder13: all13,
-    probabilityAllUnder15: all15,
-    probabilitySelectedUnder13: probability(results, (result) => result.selectedPaf >= 0 && result.selectedPaf <= 1.3),
-    probabilitySelectedUnder15: probability(results, (result) => result.selectedPaf >= 0 && result.selectedPaf <= 1.5),
-    probabilityCustomCap:
-      results.some((result) => result.customCap !== undefined) ? probability(results, (result) => result.customCap === true) : undefined,
+    probabilityAllUnder13: allOkay,
+    probabilityAllUnder15: probability(results, (result) => result.cap15),
+    probabilitySelectedUnder13: probability(results, (result) => result.selectedPaf >= 0 && result.selectedPaf <= 1.4),
+    probabilitySelectedUnder15: probability(results, (result) => result.selectedPaf >= 0 && result.selectedPaf <= 2),
     probabilityGradeCap: enforceGradeCap ? probability(results, (result) => result.gradeCap) : undefined,
-    verdict: feasibilityVerdict(valid, all13)
+    verdict: feasibilityVerdict(valid, allOkay)
   };
 }
 
-export function feasibilityVerdict(valid: number, probabilityAllUnder13: number): string {
-  if (!valid || probabilityAllUnder13 === 0) return "Impossible under these ranges";
-  if (probabilityAllUnder13 >= 0.8) return "Looks feasible";
-  if (probabilityAllUnder13 >= 0.45) return "Borderline";
-  return "Unlikely";
+export function feasibilityVerdict(valid: number, probabilityOkay: number): string {
+  if (!valid || probabilityOkay === 0) return "Course-rule check";
+  if (probabilityOkay >= 0.8) return "Looks normal";
+  if (probabilityOkay >= 0.45) return "Worth checking";
+  return "Sus";
+}
+
+function optionalMark(value: unknown): number | undefined {
+  if (value === "" || value === null || value === undefined) return undefined;
+  return toGradeNumber(value) ?? NaN;
+}
+
+function average(values: readonly number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function probability(results: readonly SimulationIteration[], predicate: (result: SimulationIteration) => boolean): number {
   return results.length ? results.filter(predicate).length / results.length : 0;
+}
+
+function rangeLabel(key: keyof MissingRanges) {
+  return key === "stage1"
+    ? "Stage 1"
+    : key === "stage2"
+      ? "Stage 2"
+      : key === "stage3"
+        ? "Stage 3"
+        : key === "teamCapstone"
+          ? "Team capstone"
+          : key === "individualProject"
+            ? "Individual project"
+            : key[0].toUpperCase() + key.slice(1);
 }

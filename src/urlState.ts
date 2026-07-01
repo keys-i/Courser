@@ -4,8 +4,12 @@ import type { StudentStatus } from "./gradeMath";
 export type UrlMember = {
   id?: string;
   name: string;
-  cloudXYZ: string;
+  stage1: string;
+  stage2: string;
+  stage3: string;
   presentation: string;
+  teamCapstone: string;
+  individualProject: string;
   overall: string;
   status: StudentStatus;
   ranges: MissingRanges;
@@ -28,12 +32,16 @@ export function refreshSeedState<T extends { seed: string; stale?: boolean }>(st
 
 export function encodeUrlState(state: UrlState): string {
   const compact = {
-    v: 2,
+    v: 3,
     s: state.seed,
     m: state.members.map((member) => [
       member.name,
-      member.cloudXYZ,
+      member.stage1,
+      member.stage2,
+      member.stage3,
       member.presentation,
+      member.teamCapstone,
+      member.individualProject,
       member.overall,
       member.status === "missing" ? 1 : 0,
       member.status === "missing" ? packRanges(member.ranges) : ""
@@ -50,14 +58,18 @@ export function decodeUrlState(value: string): UrlState | null {
       seed: raw.s,
       members: raw.m.map((row) => {
         if (!Array.isArray(row)) throw new Error("bad row");
-        const status: StudentStatus = row[4] === 1 ? "missing" : "complete";
+        const status: StudentStatus = row[8] === 1 ? "missing" : "complete";
         return {
           name: String(row[0] ?? ""),
-          cloudXYZ: String(row[1] ?? ""),
-          presentation: String(row[2] ?? ""),
-          overall: String(row[3] ?? ""),
+          stage1: String(row[1] ?? ""),
+          stage2: String(row[2] ?? ""),
+          stage3: String(row[3] ?? ""),
+          presentation: String(row[4] ?? ""),
+          teamCapstone: String(row[5] ?? ""),
+          individualProject: String(row[6] ?? ""),
+          overall: String(row[7] ?? ""),
           status,
-          ranges: status === "missing" ? unpackRanges(String(row[5] ?? "")) : defaultRanges()
+          ranges: status === "missing" ? unpackRanges(String(row[9] ?? "")) : defaultRanges()
         };
       })
     };
@@ -66,15 +78,34 @@ export function decodeUrlState(value: string): UrlState | null {
   }
 }
 
+export function blankUrlMembers(count = 3): UrlMember[] {
+  return Array.from({ length: count }, () => ({
+    name: "",
+    stage1: "",
+    stage2: "",
+    stage3: "",
+    presentation: "",
+    teamCapstone: "",
+    individualProject: "",
+    overall: "",
+    status: "complete",
+    ranges: defaultRanges()
+  }));
+}
+
+export function decodeUrlStateOrBlank(value: string, seed = generateSeed()): UrlState {
+  return decodeUrlState(value) ?? { members: blankUrlMembers(), seed };
+}
+
 function packRanges(ranges: MissingRanges): string {
-  return (["x", "y", "z", "presentation", "overall"] as const)
+  return (["stage1", "stage2", "stage3", "presentation", "teamCapstone", "individualProject", "overall"] as const)
     .map((key) => `${ranges[key].min}-${ranges[key].max}`)
     .join(".");
 }
 
 function unpackRanges(value: string): MissingRanges {
   const fallback = defaultRanges();
-  const keys = ["x", "y", "z", "presentation", "overall"] as const;
+  const keys = ["stage1", "stage2", "stage3", "presentation", "teamCapstone", "individualProject", "overall"] as const;
   const parts = value.split(".");
   return keys.reduce((ranges, key, index) => {
     const [min, max] = (parts[index] || "").split("-").map(Number);

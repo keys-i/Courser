@@ -4,8 +4,12 @@ export type StudentStatus = (typeof VALID_STATUSES)[number];
 
 export type StudentInput = {
   name?: string;
-  cloudXYZ?: string;
+  stage1?: string | number;
+  stage2?: string | number;
+  stage3?: string | number;
   presentation?: string | number;
+  teamCapstone?: string | number;
+  individualProject?: string | number;
   overall?: string | number;
   status?: StudentStatus;
 };
@@ -14,8 +18,10 @@ export type ValidationResult = {
   valid: boolean;
   errors: string[];
   warnings: string[];
-  cloud?: number;
+  stageAverage?: number;
   presentation?: number;
+  teamCapstone?: number;
+  individualProject?: number;
   overall?: number;
 };
 
@@ -29,54 +35,54 @@ export type RankedPaf = {
   tied: boolean;
 };
 
-const TIE_EPSILON = 0.0001;
-export type FeasibilityLabel =
-  | "Impossible"
-  | "Suspiciously low"
-  | "Looks normal"
-  | "Boosted"
-  | "Very high"
-  | "Needs course rule check";
+export type FeasibilityLabel = "Impossible" | "Normal" | "Boosted" | "High but okay" | "Very high" | "Sus" | "Course-rule check";
 
-export function parseCloudXYZ(value: string): [number, number, number] | null {
+const TIE_EPSILON = 0.0001;
+
+export function parseStageCode(value: string): [number, number, number] | null {
   const trimmed = value.trim();
   if (!/^[1-7]{3}$/.test(trimmed)) return null;
   return trimmed.split("").map(Number) as [number, number, number];
 }
 
-export function cloudAverage(value: string | readonly number[]): number {
-  const digits = typeof value === "string" ? parseCloudXYZ(value) : value;
-  if (!digits || digits.length !== 3) return NaN;
-  return (digits[0] + digits[1] + digits[2]) / 3;
+export function stageAverage(stage1: number, stage2: number, stage3: number): number {
+  return (stage1 + stage2 + stage3) / 3;
 }
 
-export function finalProjectAfterPAF(
-  overall: number,
-  cloudFinal: number,
-  presentation: number
-): number {
-  return (overall - 0.4 * cloudFinal - 0.3 * presentation) / 0.3;
+export function weightedCourseResult(stageAvg: number, presentation: number, individualProject: number): number {
+  return 0.4 * stageAvg + 0.3 * presentation + 0.3 * individualProject;
 }
 
-export function rawTeamProjectBeforePAF(finalProjects: readonly number[]): number {
-  if (!finalProjects.length || finalProjects.some((value) => !Number.isFinite(value))) return NaN;
-  return finalProjects.reduce((sum, value) => sum + value, 0) / finalProjects.length;
+export function individualProjectFromWeightedResult(overall: number, stageAvg: number, presentation: number): number {
+  return (overall - 0.4 * stageAvg - 0.3 * presentation) / 0.3;
 }
 
-export function pafForStudent(finalProject: number, rawTeamProject: number): number {
-  return rawTeamProject > 0 && Number.isFinite(rawTeamProject) ? finalProject / rawTeamProject : NaN;
+export function individualProjectFromPaf(teamCapstone: number, paf: number): number {
+  return teamCapstone * paf;
 }
+
+export function pafForStudent(individualProject: number, teamCapstone: number): number {
+  return teamCapstone > 0 && Number.isFinite(teamCapstone) ? individualProject / teamCapstone : NaN;
+}
+
+export function inferTeamCapstone(individualProjects: readonly number[]): number {
+  if (!individualProjects.length || individualProjects.some((value) => !Number.isFinite(value))) return NaN;
+  return individualProjects.reduce((sum, value) => sum + value, 0) / individualProjects.length;
+}
+
+export const rawTeamProjectBeforePAF = inferTeamCapstone;
+export const finalProjectAfterPAF = individualProjectFromWeightedResult;
 
 export function capCheck(
   pafs: readonly number[],
   cap: number,
-  finalProjects: readonly number[] = [],
+  individualProjects: readonly number[] = [],
   enforceGradeCap = false
 ) {
   const pafOk = pafs.every((paf) => Number.isFinite(paf) && paf >= 0 && paf <= cap);
   const gradeOk =
     !enforceGradeCap ||
-    finalProjects.every((project) => Number.isFinite(project) && project >= MIN_MARK && project <= MAX_MARK);
+    individualProjects.every((project) => Number.isFinite(project) && project >= MIN_MARK && project <= MAX_MARK);
   return {
     ok: pafOk && gradeOk,
     cap,
@@ -137,27 +143,44 @@ export function formatGrade(value: number, digits = 2): string {
 export function validateStudentInput(student: StudentInput): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const cloudDigits = parseCloudXYZ(String(student.cloudXYZ ?? ""));
+  const stage1 = toGradeNumber(student.stage1);
+  const stage2 = toGradeNumber(student.stage2);
+  const stage3 = toGradeNumber(student.stage3);
   const presentation = toGradeNumber(student.presentation);
-  const overall = toGradeNumber(student.overall);
+  const teamCapstone = optionalGradeNumber(student.teamCapstone);
+  const directIndividual = optionalGradeNumber(student.individualProject);
+  const overall = optionalGradeNumber(student.overall);
 
-  if (!cloudDigits) errors.push("Cloud XYZ must be exactly three digits from 1 to 7.");
+  if (stage1 === null) errors.push("Stage 1 must be a number from 1 to 7.");
+  if (stage2 === null) errors.push("Stage 2 must be a number from 1 to 7.");
+  if (stage3 === null) errors.push("Stage 3 must be a number from 1 to 7.");
   if (presentation === null) errors.push("Presentation must be a number from 1 to 7.");
-  if (overall === null) errors.push("Overall must be a number from 1 to 7.");
+  if (teamCapstone === null) errors.push("Team capstone must be blank or a number from 1 to 7.");
+  if (directIndividual === null) errors.push("Individual project must be blank or a number from 1 to 7.");
+  if (overall === null) errors.push("Weighted result must be blank or a number from 1 to 7.");
+  if (directIndividual === undefined && overall === undefined) errors.push("Add individual project grade or weighted result.");
 
-  const cloud = cloudDigits ? cloudAverage(cloudDigits) : undefined;
-  if (cloud !== undefined && presentation !== null && overall !== null) {
-    const finalProject = finalProjectAfterPAF(overall, cloud, presentation);
-    if (finalProject < MIN_MARK) warnings.push("Final project after PAF is below 1; that is suspicious.");
-    if (finalProject > MAX_MARK) warnings.push("Final project after PAF exceeds 7 unless boosts above the normal cap are allowed.");
+  const average = stage1 !== null && stage2 !== null && stage3 !== null ? stageAverage(stage1, stage2, stage3) : undefined;
+  const individualProject =
+    directIndividual !== null && directIndividual !== undefined
+      ? directIndividual
+      : overall !== null && overall !== undefined && average !== undefined && presentation !== null
+      ? individualProjectFromWeightedResult(overall, average, presentation)
+      : undefined;
+
+  if (individualProject !== undefined) {
+    if (individualProject < MIN_MARK) warnings.push("Individual project after PAF is below 1.");
+    if (individualProject > MAX_MARK) warnings.push("Above 7 needs course rules.");
   }
 
   return {
     valid: errors.length === 0,
     errors,
     warnings,
-    cloud,
+    stageAverage: average,
     presentation: presentation ?? undefined,
+    teamCapstone: teamCapstone ?? undefined,
+    individualProject,
     overall: overall ?? undefined
   };
 }
@@ -168,6 +191,11 @@ export function toGradeNumber(value: unknown): number | null {
   if (!text) return null;
   const number = Number(text);
   return Number.isFinite(number) && number >= MIN_MARK && number <= MAX_MARK ? number : null;
+}
+
+export function optionalGradeNumber(value: unknown): number | null | undefined {
+  if (value === "" || value === null || value === undefined) return undefined;
+  return toGradeNumber(value);
 }
 
 export function csvEscape(value: unknown): string {
@@ -183,30 +211,30 @@ export function classifyPafFeasibility(
   memberPaf: number,
   allPafs: readonly number[],
   teamSize: number,
-  finalProjectAfterPaf: number,
-  rawTeamProject = 1
+  individualProject: number,
+  teamCapstone = 1
 ): FeasibilityLabel {
-  const lowCount = allPafs.filter((paf) => paf < 0.5).length;
-  if (memberPaf < 0 || rawTeamProject <= 0 || finalProjectAfterPaf < MIN_MARK) return "Impossible";
-  if (memberPaf > 1.5 || finalProjectAfterPaf > MAX_MARK) return "Needs course rule check";
-  if (memberPaf < 0.5 || (teamSize >= 5 && lowCount >= 3)) return "Suspiciously low";
-  if (memberPaf <= 1.15) return "Looks normal";
-  if (memberPaf <= 1.3) return "Boosted";
+  if (memberPaf < 0 || teamCapstone <= 0 || individualProject < MIN_MARK) return "Impossible";
+  if (individualProject > MAX_MARK) return "Course-rule check";
+  if (memberPaf > 2) return "Sus";
+  if (memberPaf < 0.5) return "Sus";
+  if (teamSize === 6 && allPafs.filter((paf) => paf < 0.5).length >= 5) return "Sus";
+  if (memberPaf < 1.15) return "Normal";
+  if (memberPaf <= 1.4) return "Boosted";
   return "Very high";
 }
 
 export function teamFeasibilityNotes(
   pafs: readonly number[],
-  finalProjects: readonly number[],
-  rawTeamProject: number
+  individualProjects: readonly number[],
+  teamCapstone: number
 ): string[] {
   const notes: string[] = [];
   const lowCount = pafs.filter((paf) => paf < 0.5).length;
-  if (rawTeamProject <= 0 || !Number.isFinite(rawTeamProject)) notes.push("Need a valid team project grade before this makes sense.");
-  if (pafs.length >= 5 && lowCount >= 3) notes.push("This distribution looks lopsided.");
-  if (pafs.length === 6 && lowCount >= 5) notes.push("This is technically a number, but it smells like a group-chat incident.");
-  if (pafs.some((paf) => paf > 1.5)) notes.push("Needs course rule check.");
-  if (finalProjects.some((project) => project > MAX_MARK)) notes.push("Boosted above 7 — only valid if the course allows it.");
+  if (teamCapstone <= 0 || !Number.isFinite(teamCapstone)) notes.push("Need a valid team capstone grade");
+  if (pafs.some((paf) => paf > 2) && lowCount >= Math.max(1, pafs.length - 2)) notes.push("This looks lopsided");
+  if (pafs.length === 6 && lowCount >= 5) notes.push("This smells like a group-chat incident");
+  if (individualProjects.some((project) => project > MAX_MARK)) notes.push("Above 7 needs course rules");
   return notes;
 }
 
