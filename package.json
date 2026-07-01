@@ -9,7 +9,12 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run"
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "security:audit": "npm audit --audit-level=high",
+    "security:smoke": "node scripts/security-smoke.mjs",
+    "ci": "npm run typecheck && npm run test:run && npm run security:smoke && npm run build"
   },
   "dependencies": {
     "katex": "^0.17.0",
@@ -17,6 +22,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/node": "^26.0.1",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^6.0.3",
