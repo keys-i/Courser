@@ -1,142 +1,123 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
+import { RADHESH_RELEASED_EXAMPLE, VALID_STATUSES } from "./constants";
 import {
-  capCheck,
   classifyPafFeasibility,
-  cloudAverage,
   csvEscape,
-  finalProjectAfterPAF,
+  formatGrade,
+  individualProjectFromPaf,
+  individualProjectFromWeightedResult,
+  inferTeamCapstone,
   pafForStudent,
-  parseCloudXYZ,
+  parseStageCode,
   rankPafs,
-  rawTeamProjectBeforePAF,
   sortByPafDesc,
+  stageAverage,
   teamFeasibilityNotes,
   teamSizeOk,
-  validateStudentInput
+  toGradeNumber,
+  validateStudentInput,
+  weightedCourseResult
 } from "./gradeMath";
-import { MIN_MARK, MAX_MARK, VALID_STATUSES } from "./constants";
-
-const sample = [
-  { name: "Rad", cloudXYZ: "777", presentation: 6, overall: 7 },
-  { name: "Yes", cloudXYZ: "574", presentation: 7, overall: 6 },
-  { name: "Dal", cloudXYZ: "755", presentation: 7, overall: 6 },
-  { name: "Mar", cloudXYZ: "774", presentation: 6, overall: 6 },
-  { name: "Jai", cloudXYZ: "577", presentation: 7, overall: 7 }
-];
-
-function sampleProjects() {
-  return sample.map((student) =>
-    finalProjectAfterPAF(student.overall, cloudAverage(student.cloudXYZ), student.presentation)
-  );
-}
 
 describe("grade math", () => {
-  it("parses cloud XYZ and averages it", () => {
-    expect(parseCloudXYZ("777")).toEqual([7, 7, 7]);
-    expect(parseCloudXYZ("111")).toEqual([1, 1, 1]);
-    expect(cloudAverage("777")).toBe(7);
-    expect(cloudAverage("574")).toBeCloseTo(5.333333, 6);
+  test.each([1, 1.5, 7])("accepts mark %s", (mark) => {
+    expect(toGradeNumber(mark)).toBe(mark);
   });
 
-  it("rejects invalid XYZ values", () => {
-    for (const value of ["000", "057", "77", "7777", "7A7", "889", "-77"]) {
-      expect(parseCloudXYZ(value)).toBeNull();
-    }
+  test.each([0, -1, 7.1, NaN, Infinity, ""])("rejects mark %s", (mark) => {
+    expect(toGradeNumber(mark)).toBeNull();
   });
 
-  it("keeps marks on an immutable one-to-seven scale", () => {
-    expect(MIN_MARK).toBe(1);
-    expect(MAX_MARK).toBe(7);
-    expect(validateStudentInput({ cloudXYZ: "111", presentation: 1, overall: 7 }).valid).toBe(true);
-    expect(validateStudentInput({ cloudXYZ: "111", presentation: 0, overall: 7 }).valid).toBe(false);
-    expect(validateStudentInput({ cloudXYZ: "111", presentation: 1, overall: 0 }).valid).toBe(false);
+  test.each([
+    [7, 7, 7, 7],
+    [5, 7, 4, 5.333333],
+    [1, 1, 1, 1]
+  ])("averages stage marks", (s1, s2, s3, expected) => {
+    expect(stageAverage(s1, s2, s3)).toBeCloseTo(expected, 6);
   });
 
-  it("does not expose an excluded status", () => {
-    expect(VALID_STATUSES).toEqual(["complete", "missing"]);
-    expect(VALID_STATUSES).not.toContain("excluded");
+  test.each([
+    ["111", [1, 1, 1]],
+    ["574", [5, 7, 4]],
+    ["777", [7, 7, 7]]
+  ])("parses compact stage code %s", (code, expected) => {
+    expect(parseStageCode(code)).toEqual(expected);
   });
 
-  it("computes Rad's final project after PAF", () => {
-    expect(finalProjectAfterPAF(7, cloudAverage("777"), 6)).toBeCloseTo(8, 6);
+  test.each(["000", "057", "77", "7777", "7A7", "889", "-77"])("rejects compact stage code %s", (code) => {
+    expect(parseStageCode(code)).toBeNull();
   });
 
-  it("computes sample raw T and Rad PAF", () => {
-    const projects = sampleProjects();
-    const rawT = rawTeamProjectBeforePAF(projects);
-    expect(rawT).toBeCloseTo(6.6444, 4);
-    expect(pafForStudent(projects[0], rawT)).toBeCloseTo(1.204, 3);
+  it("implements the released formulas", () => {
+    const c = stageAverage(7, 7, 7);
+    const i = individualProjectFromPaf(7, 1);
+    expect(c).toBe(7);
+    expect(i).toBe(7);
+    expect(pafForStudent(i, 7)).toBe(1);
+    expect(weightedCourseResult(c, 6, i)).toBeCloseTo(6.7);
+    expect(individualProjectFromWeightedResult(6.7, c, 6)).toBeCloseTo(7);
   });
 
-  it("keeps the PAF sum equal to active team size", () => {
-    const projects = sampleProjects();
-    const rawT = rawTeamProjectBeforePAF(projects);
-    const pafSum = projects.reduce((sum, project) => sum + pafForStudent(project, rawT), 0);
-    expect(pafSum).toBeCloseTo(sample.length, 10);
+  it("matches the Radhesh released example without using peer evaluation as PAF", () => {
+    const example = RADHESH_RELEASED_EXAMPLE;
+    const c = stageAverage(example.stage1, example.stage2, example.stage3);
+    expect(c).toBe(7);
+    expect(pafForStudent(example.individualProject, example.teamCapstone)).toBe(1);
+    expect(weightedCourseResult(c, example.presentation, example.individualProject)).toBeCloseTo(6.7);
+    expect(example.peerEvaluation).toBe("1/10");
+    expect(1 / 10).not.toBe(pafForStudent(example.individualProject, example.teamCapstone));
   });
 
-  it("checks caps under 1.3 and 1.5", () => {
-    const projects = sampleProjects();
-    const rawT = rawTeamProjectBeforePAF(projects);
-    const pafs = projects.map((project) => pafForStudent(project, rawT));
-    expect(capCheck(pafs, 1.3).ok).toBe(true);
-    expect(capCheck(pafs, 1.5).ok).toBe(true);
+  test.each([
+    [-0.1, "Impossible"],
+    [0, "Sus"],
+    [0.49, "Sus"],
+    [0.5, "Normal"],
+    [1.14, "Normal"],
+    [1.15, "Boosted"],
+    [1.4, "Boosted"],
+    [1.41, "Very high"],
+    [2, "Very high"],
+    [2.01, "Sus"]
+  ] as const)("classifies PAF %s as %s", (paf, expected) => {
+    expect(classifyPafFeasibility(paf, [paf, 1, 1], 3, 5, 5)).toBe(expected);
   });
 
-  it("ranks gold, silver, and bronze PAFs", () => {
-    const ranked = rankPafs([
-      { id: "a", name: "A", paf: 1.4 },
-      { id: "b", name: "B", paf: 1.2 },
-      { id: "c", name: "C", paf: 1.1 },
-      { id: "d", name: "D", paf: 1.0 }
-    ]);
-    expect(ranked.map((row) => row.tier)).toEqual(["gold", "silver", "bronze", undefined]);
-    expect(ranked[0].badge).toBe("Top PAF");
+  it("flags team-level oddities", () => {
+    expect(teamFeasibilityNotes([0.4, 0.4, 0.4, 2.2, 1], [2, 2, 2, 7, 5], 5)).toContain("This looks lopsided");
+    expect(teamFeasibilityNotes([0, 0.2, 0.3, 0.4, 0.49, 4.61], [1, 1, 1, 1, 1, 7], 7)).toContain(
+      "This smells like a group-chat incident"
+    );
+    expect(teamFeasibilityNotes([1, 1, 1], [7, 8, 7], 7)).toContain("Above 7 needs course rules");
   });
 
-  it("handles tied PAF rankings", () => {
-    const ranked = rankPafs([
-      { id: "a", name: "A", paf: 1.20001 },
-      { id: "b", name: "B", paf: 1.2 },
-      { id: "c", name: "C", paf: 1.1 }
-    ]);
-    expect(ranked[0].badge).toBe("Tied Top PAF");
-    expect(ranked[1].badge).toBe("Tied Top PAF");
-    expect(ranked[2].tier).toBe("bronze");
-  });
-
-  it("blocks teams below three active members and rejects nonpositive T", () => {
-    expect(teamSizeOk(2)).toBe(false);
-    expect(teamSizeOk(3)).toBe(true);
-    expect(rawTeamProjectBeforePAF([-1, -2])).toBeLessThanOrEqual(0);
-  });
-
-  it("escapes CSV safely", () => {
-    expect(csvEscape('Rad, "the lead"\nPAF')).toBe('"Rad, ""the lead""\nPAF"');
-  });
-
-  it("does not treat whitespace-only grades as zero", () => {
-    expect(validateStudentInput({ cloudXYZ: "777", presentation: " ", overall: "7" }).valid).toBe(false);
-  });
-
-  it("sorts result rows by PAF descending", () => {
+  it("sorts results by PAF descending", () => {
     expect(sortByPafDesc([{ paf: 0.7 }, { paf: 1.4 }, { paf: 1.1 }]).map((row) => row.paf)).toEqual([1.4, 1.1, 0.7]);
   });
 
-  it("classifies row feasibility", () => {
-    expect(classifyPafFeasibility(-0.1, [-0.1, 1], 3, 4)).toBe("Impossible");
-    expect(classifyPafFeasibility(0.4, [0.4, 1.2, 1.4], 3, 4)).toBe("Suspiciously low");
-    expect(classifyPafFeasibility(1.0, [1, 1, 1], 3, 4)).toBe("Looks normal");
-    expect(classifyPafFeasibility(1.2, [1.2, 0.9, 0.9], 3, 4)).toBe("Boosted");
-    expect(classifyPafFeasibility(1.4, [1.4, 0.8, 0.8], 3, 4)).toBe("Very high");
-    expect(classifyPafFeasibility(1.6, [1.6, 0.7, 0.7], 3, 4)).toBe("Needs course rule check");
-    expect(classifyPafFeasibility(1.1, [1.1, 0.9, 1], 3, 8)).toBe("Needs course rule check");
+  it("ranks medals and ties without fake second place", () => {
+    const ranked = rankPafs([
+      { id: "a", name: "A", paf: 1.20001 },
+      { id: "b", name: "B", paf: 1.2 },
+      { id: "c", name: "C", paf: 1.1 },
+      { id: "d", name: "D", paf: 1 }
+    ]);
+    expect(ranked.map((row) => row.tier)).toEqual(["gold", "gold", "bronze", undefined]);
+    expect(ranked[0].badge).toBe("Tied Top PAF");
+    expect(ranked[1].badge).toBe("Tied Top PAF");
+    expect(ranked.some((row) => row.badge === "2nd")).toBe(false);
   });
 
-  it("flags team-level suspicious PAF patterns", () => {
-    expect(teamFeasibilityNotes([0.4, 0.4, 0.4, 1.9, 1.9], [2, 2, 2, 8, 8], 4)).toContain("This distribution looks lopsided.");
-    expect(teamFeasibilityNotes([0.1, 0.2, 0.3, 0.4, 0.49, 4.51], [1, 1, 1, 1, 1, 9], 4)).toContain(
-      "This is technically a number, but it smells like a group-chat incident."
-    );
+  it("keeps every row active and requires three people for normal teams", () => {
+    expect(VALID_STATUSES).toEqual(["complete", "missing"]);
+    expect(teamSizeOk(2)).toBe(false);
+    expect(teamSizeOk(3)).toBe(true);
+  });
+
+  it("validates input and escapes CSV", () => {
+    expect(validateStudentInput({ stage1: 7, stage2: 7, stage3: 7, presentation: 6, individualProject: 7 }).valid).toBe(true);
+    expect(validateStudentInput({ stage1: 0, stage2: 7, stage3: 7, presentation: 6, individualProject: 7 }).valid).toBe(false);
+    expect(csvEscape('Rad, "lead"\nPAF')).toBe('"Rad, ""lead""\nPAF"');
+    expect(formatGrade(inferTeamCapstone([7, 6, 5]), 4)).toBe("6.0000");
   });
 });
