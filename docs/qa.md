@@ -2,15 +2,25 @@
 
 - Light mode looks warm, not plain white.
 - Dark mode looks fun, not harsh black.
+- Website title says Courser.
+- Hero does not say "Definitely not Cursor".
+- Hero does not say "Marks in. Panic out".
 - Theme toggle sun/moon works.
 - Snake animation is a real character, not a wiggly line.
 - Accessibility button is reachable by keyboard.
+- GitHub button opens Rad's profile in a new tab.
 - All inputs have visible labels.
-- Result is sorted by PAF.
+- Stage 1/2/3 inputs are clear.
+- Result feels clean.
 - Feasibility appears beside each row.
+- Quick read panel feels helpful, not noisy.
+- PAF Reality Check is understandable.
 - Marks cannot go below 1 or above 7.
 - Seed cannot be typed.
 - Refresh seed works.
 - Short share link loads the same state.
 - Reduced motion works.
 - Mobile layout is clean.
+- Demo data is loaded only when requested.
+- Radhesh example matches released marks.
+- Peer evaluation is not treated as PAF.
