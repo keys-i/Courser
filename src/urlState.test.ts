@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { RADHESH_RELEASED_EXAMPLE } from "./constants";
 import { defaultRanges } from "./simulation";
 import { blankUrlMembers, decodeUrlState, decodeUrlStateOrBlank, encodeUrlState, generateSeed, refreshSeedState, SEED_EDITABLE } from "./urlState";
 
@@ -10,24 +9,16 @@ describe("url state", () => {
       members: [
         {
           name: "A, B\nC",
-          stage1: "7",
-          stage2: "6",
-          stage3: "5",
+          stageMarks: "765",
           presentation: "6",
-          teamCapstone: "7",
-          individualProject: "6.5",
-          overall: "",
-          status: "complete" as const,
+          overall: "6.5",
+          status: "present" as const,
           ranges: defaultRanges()
         },
         {
           name: "Ghost",
-          stage1: "",
-          stage2: "",
-          stage3: "",
+          stageMarks: "",
           presentation: "",
-          teamCapstone: "",
-          individualProject: "",
           overall: "",
           status: "missing" as const,
           ranges: defaultRanges()
@@ -36,7 +27,8 @@ describe("url state", () => {
     };
     const encoded = encodeUrlState(state);
     expect(encoded).not.toContain("{");
-    expect(encoded.length).toBeLessThan(700);
+    expect(encoded).toMatch(/^1\.S48291\./);
+    expect(encoded.length).toBeLessThan(180);
     expect(decodeUrlState(encoded)).toEqual(state);
   });
 
@@ -51,26 +43,21 @@ describe("url state", () => {
     expect(refreshSeedState({ seed: "SNAKE-12345", stale: false }, () => 0.9)).toEqual({ seed: "SNAKE-91000", stale: true });
   });
 
-  it("only includes demo marks when that state is encoded", () => {
-    const blank = encodeUrlState({ seed: "SNAKE-11111", members: blankUrlMembers() });
-    const demo = encodeUrlState({
+  it("is shorter than a verbose JSON-style state", () => {
+    const state = {
       seed: "SNAKE-11111",
       members: [
         {
-          name: RADHESH_RELEASED_EXAMPLE.name,
-          stage1: "7",
-          stage2: "7",
-          stage3: "7",
+          name: "Teammate One",
+          stageMarks: "777",
           presentation: "6",
-          teamCapstone: "7",
-          individualProject: "7",
-          overall: "",
-          status: "complete",
+          overall: "6.7",
+          status: "present" as const,
           ranges: defaultRanges()
         }
       ]
-    });
-    expect(decodeUrlState(blank)?.members.some((member) => member.name === RADHESH_RELEASED_EXAMPLE.name)).toBe(false);
-    expect(decodeUrlState(demo)?.members[0].name).toBe(RADHESH_RELEASED_EXAMPLE.name);
+    };
+    const verbose = encodeURIComponent(JSON.stringify(state));
+    expect(encodeUrlState(state).length).toBeLessThan(verbose.length);
   });
 });

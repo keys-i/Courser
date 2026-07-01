@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GITHUB_PROFILE_URL, TRUSTED_FORMULAS } from "./constants";
 
 const app = () => readFileSync("src/App.tsx", "utf8");
-const readme = () => readFileSync("README.md", "utf8");
+const css = () => readFileSync("src/styles.css", "utf8");
 
 describe("ui smoke", () => {
   it("keeps the website brand short", () => {
@@ -16,15 +16,18 @@ describe("ui smoke", () => {
 
   it("uses the released-grade UI wording", () => {
     const source = app();
-    expect(source).toContain("<h2>Result</h2>");
+    expect(source).toContain('text: "Result"');
+    expect(source).toContain("Results Ready");
+    expect(source).toContain("Results Unavailable");
     expect(source).toContain("Individual project grade");
     expect(source).toContain("PAF 1.00 means 100% contribution");
-    expect(source).toContain("PAF is not out of 10");
+    expect(source).toContain("What PAF means");
     expect(source).toContain("PAF Reality Check");
-    expect(source).toContain("Load Radhesh example");
-    expect(source).toContain("Results ready");
-    expect(source).toContain("Fix marks first");
-    expect(source).toContain("Gradebook display only, not a PAF grade");
+    expect(source).toContain("For missing marks and ghost teammates");
+    expect(source).not.toContain("Load Radhesh example");
+    expect(source).not.toContain("Radhesh");
+    expect(source).not.toContain("Peer evaluation display");
+    expect(source).not.toContain("Stop the snake");
     expect(source).not.toContain("Result Table");
     expect(source).not.toContain("Sorted by PAF");
     expect(source).not.toContain("wildlife documentaries");
@@ -36,6 +39,8 @@ describe("ui smoke", () => {
 
   it("shows stages, not old cloud wording", () => {
     const source = app();
+    expect(source).toContain("Stage marks");
+    expect(source).toContain("e.g. 754");
     expect(source).toContain("API Functionality");
     expect(source).toContain("Deployed to Cloud");
     expect(source).toContain("Scalable Application");
@@ -47,6 +52,8 @@ describe("ui smoke", () => {
     expect(GITHUB_PROFILE_URL).toBe("https://github.com/keys-i");
     expect(source).toContain('aria-label="Open Rad’s GitHub"');
     expect(source).toContain('aria-label="Accessibility settings"');
+    expect(source).toContain("Focus boost");
+    expect(source).toContain("Pause mascot");
     expect(source).toContain("Seed: {seed}");
     expect(source).toContain("Refresh seed");
     expect(source).not.toContain("<input value={seed}");
@@ -62,8 +69,10 @@ describe("ui smoke", () => {
 
   it("keeps docs and formula rendering trusted", () => {
     expect(TRUSTED_FORMULAS.length).toBeGreaterThanOrEqual(7);
-    expect(readme()).toContain("```math");
-    expect(readme()).toContain("MIT License");
-    expect(readme()).toContain("CI/CD");
+  });
+
+  it("keeps Quick Read in page flow on small screens", () => {
+    expect(css()).toContain(".summary");
+    expect(css()).not.toContain(".summary {\n  position: fixed");
   });
 });

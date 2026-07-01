@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { RADHESH_RELEASED_EXAMPLE, VALID_STATUSES } from "./constants";
+import { VALID_STATUSES } from "./constants";
 import {
   classifyPafFeasibility,
   csvEscape,
@@ -67,19 +67,8 @@ describe("grade math", () => {
     expect(individualProjectFromPaf(7, paf)).toBeCloseTo((7 * percent) / 100);
   });
 
-  it("matches the Radhesh released example without using peer evaluation as PAF", () => {
-    const example = RADHESH_RELEASED_EXAMPLE;
-    const c = stageAverage(example.stage1, example.stage2, example.stage3);
-    expect(c).toBe(7);
-    expect(pafForStudent(example.individualProject, example.teamCapstone)).toBe(1);
-    expect(example.individualProject).toBe(individualProjectFromPaf(example.teamCapstone, 1));
-    expect(weightedCourseResult(c, example.presentation, example.individualProject)).toBeCloseTo(6.7);
-    expect(example.peerEvaluation).toBe("1");
-    expect(1 / 10).not.toBe(pafForStudent(example.individualProject, example.teamCapstone));
-  });
-
   test.each([
-    [-0.1, "Sus"],
+    [-0.1, "Impossible"],
     [0, "Sus"],
     [0.49, "Sus"],
     [0.5, "Normal"],
@@ -113,20 +102,22 @@ describe("grade math", () => {
       { id: "d", name: "D", paf: 1 }
     ]);
     expect(ranked.map((row) => row.tier)).toEqual(["gold", "gold", "bronze", undefined]);
-    expect(ranked[0].badge).toBe("Tied Top PAF");
-    expect(ranked[1].badge).toBe("Tied Top PAF");
-    expect(ranked.some((row) => row.badge === "2nd")).toBe(false);
+    expect(ranked[0].badge).toBe("Tied Gold");
+    expect(ranked[1].badge).toBe("Tied Gold");
+    expect(ranked.some((row) => row.badge === "Silver")).toBe(false);
   });
 
   it("keeps every row active and requires three people for normal teams", () => {
-    expect(VALID_STATUSES).toEqual(["complete", "missing"]);
+    expect(VALID_STATUSES).toEqual(["present", "missing"]);
     expect(teamSizeOk(2)).toBe(false);
     expect(teamSizeOk(3)).toBe(true);
   });
 
   it("validates input and escapes CSV", () => {
-    expect(validateStudentInput({ stage1: 7, stage2: 7, stage3: 7, presentation: 6, individualProject: 7 }).valid).toBe(true);
-    expect(validateStudentInput({ stage1: 0, stage2: 7, stage3: 7, presentation: 6, individualProject: 7 }).valid).toBe(false);
+    const valid = validateStudentInput({ stageMarks: "777", presentation: 6, overall: 6.7 });
+    expect(valid.valid).toBe(true);
+    expect(valid.individualProject).toBeCloseTo(7);
+    expect(validateStudentInput({ stageMarks: "077", presentation: 6, overall: 6.7 }).valid).toBe(false);
     expect(csvEscape('Rad, "lead"\nPAF')).toBe('"Rad, ""lead""\nPAF"');
     expect(formatGrade(inferTeamCapstone([7, 6, 5]), 4)).toBe("6.0000");
   });

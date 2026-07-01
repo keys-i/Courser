@@ -12,8 +12,8 @@ import {
 } from "./simulation";
 
 const students: SimulationStudent[] = [
-  { id: "a", name: "A", status: "complete", stage1: 7, stage2: 7, stage3: 7, presentation: 6, individualProject: 7, ranges: defaultRanges() },
-  { id: "b", name: "B", status: "complete", stage1: 5, stage2: 7, stage3: 4, presentation: 7, individualProject: 6, ranges: defaultRanges() },
+  { id: "a", name: "A", status: "present", stageMarks: "777", presentation: 6, overall: 6.7, ranges: defaultRanges() },
+  { id: "b", name: "B", status: "present", stageMarks: "574", presentation: 7, overall: 6, ranges: defaultRanges() },
   { id: "c", name: "C", status: "missing", ranges: defaultRanges() }
 ];
 
@@ -45,9 +45,9 @@ describe("simulation", () => {
 
   it("skips invalid iterations", () => {
     const invalid: SimulationStudent[] = [
-      { id: "a", name: "A", status: "complete", stage1: 7, stage2: 7, stage3: 7, presentation: 7, overall: 1, ranges: defaultRanges() },
-      { id: "b", name: "B", status: "complete", stage1: 7, stage2: 7, stage3: 7, presentation: 7, overall: 1, ranges: defaultRanges() },
-      { id: "c", name: "C", status: "complete", stage1: 7, stage2: 7, stage3: 7, presentation: 7, overall: 1, ranges: defaultRanges() }
+      { id: "a", name: "A", status: "present", stageMarks: "777", presentation: 7, overall: 1, ranges: defaultRanges() },
+      { id: "b", name: "B", status: "present", stageMarks: "777", presentation: 7, overall: 1, ranges: defaultRanges() },
+      { id: "c", name: "C", status: "present", stageMarks: "777", presentation: 7, overall: 1, ranges: defaultRanges() }
     ];
     expect(runSimulationBatch(invalid, { iterations: 5, seed: "bad" })).toEqual({ results: [], invalid: 5 });
   });

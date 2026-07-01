@@ -9,7 +9,17 @@ describe("accessibility state", () => {
   });
 
   it("persists and resets simple settings", () => {
-    const settings = { ...defaultAccessibility(false), reduceMotion: true, largeText: true, dyslexiaSpacing: true };
+    const settings = {
+      ...defaultAccessibility(false),
+      reduceMotion: true,
+      largeText: true,
+      dyslexiaSpacing: true,
+      focusBoost: true,
+      calmMode: true,
+      underlineLinks: true,
+      monochromeMedals: true,
+      pauseMascot: true
+    };
     expect(parseAccessibility(serializeAccessibility(settings))).toEqual(settings);
     expect(parseAccessibility("{nope", true)).toEqual(defaultAccessibility(true));
   });
